@@ -1,0 +1,8 @@
+# Target path in the awesome-dsh-plugin PR:
+# data/plugins/778672151__dsh-session-turn-eta.yml
+url: https://github.com/778672151/dsh-session-turn-eta
+name: 778672151/dsh-session-turn-eta
+category: ui
+description:
+  en: Shows a live progress bar with a percentage and estimated time left for the current DeepSeek Harness turn, and turns the bar red when the turn fails or is interrupted.
+  zh: 为当前这一轮 DeepSeek Harness 任务显示实时进度条、百分比与预计剩余时间，任务失败或中断时进度条变红。
