@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.3.0
+
+### Prediction
+
+- The per-step rate is now the **40th percentile** of the session's observed step
+  durations instead of the median. On a 21-session backtest this cuts MAPE from
+  74% to 68% and reduces backwards movement, because the step distribution is
+  right-skewed.
+- `interval` is now an **empirical predictive range** derived from every
+  `remaining steps x step duration` combination the session's history admits
+  (8th–92nd percentile), rather than a min/max of samples. Measured coverage of
+  the realised remaining time is about 64%.
+
+### Display
+
+- A wide estimate prints as a range (`~3m–20m left`) with a translucent band on
+  the track showing where the turn is predicted to end.
+
+### Measured and rejected
+
+Both mechanisms of the planned "task-progress" approach were implemented and
+backtested, then removed because they made accuracy worse on real session data:
+
+- a tool-class-aware rate (class mix times per-class medians): MAPE 74% -> 107%;
+- todo milestones (wall time per completed todo item) blended into the estimate:
+  MAPE 56% -> 68% on the todo-bearing turns, and neutral overall.
+
+The todo list is written in only about a quarter of turns and usually once, so it
+does not carry enough signal to beat the step model.
+
 ## 0.2.0
 
 First public release.

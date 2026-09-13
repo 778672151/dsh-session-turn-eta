@@ -14,9 +14,11 @@ export const zh = {
   'turnProgress.completed': '进度 100%',
   'turnProgress.finishing': '即将完成…',
   'turnProgress.failed': '进度已中断',
-  'turnProgress.etaSeconds': '约剩 {seconds} 秒',
-  'turnProgress.etaMinutes': '约剩 {minutes} 分 {seconds} 秒',
-  'turnProgress.etaHours': '约剩 {hours} 时 {minutes} 分',
+  'turnProgress.eta': '约剩 {duration}',
+  'turnProgress.etaRange': '约剩 {low}~{high}',
+  'turnProgress.durationSeconds': '{seconds} 秒',
+  'turnProgress.durationMinutes': '{minutes} 分 {seconds} 秒',
+  'turnProgress.durationHours': '{hours} 时 {minutes} 分',
 }
 
 /** English dictionary. */
@@ -26,9 +28,11 @@ export const en = {
   'turnProgress.completed': 'Progress 100%',
   'turnProgress.finishing': 'Finishing…',
   'turnProgress.failed': 'Progress interrupted',
-  'turnProgress.etaSeconds': '~{seconds}s left',
-  'turnProgress.etaMinutes': '~{minutes}m {seconds}s left',
-  'turnProgress.etaHours': '~{hours}h {minutes}m left',
+  'turnProgress.eta': '~{duration} left',
+  'turnProgress.etaRange': '~{low}–{high} left',
+  'turnProgress.durationSeconds': '{seconds}s',
+  'turnProgress.durationMinutes': '{minutes}m {seconds}s',
+  'turnProgress.durationHours': '{hours}h {minutes}m',
 }
 
 /** Client services required by this plugin. */

@@ -1,11 +1,13 @@
 /**
  * Replay-faithful fold from durable `session/event` records to turn
- * remaining-time predictions and once-per-turn duration records.
+ * remaining-time predictions and once-per-turn duration records. It mirrors the
+ * `turnEta` projection state so both folds share one estimator.
  * @module @deepseek-ai/dsh-session-turn-eta/eta
  */
 
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import { etaCore } from './predict.ts'
+import { MAX_STEP_SAMPLES, MAX_TURN_STEPS, bounded } from './samples.ts'
 import type { TurnEtaPrediction, TurnEtaRecord } from './types.ts'
 
 /** Emissions caused by applying one durable event. */
@@ -17,7 +19,8 @@ export interface TurnEtaEmission {
 interface OpenTurn {
   readonly turn: number
   readonly startTime: number
-  readonly stepDurations: number[]
+  /** Bounded history of completed step durations in this turn. */
+  stepDurations: number[]
   openStepStart: number | undefined
   lastStep: number
   /** Re-anchoring total shared with the projection estimator. */
@@ -107,8 +110,8 @@ export class TurnEtaModel {
         if (open === undefined || open.turn !== event.data.turn) return {}
         if (open.openStepStart !== undefined) {
           const duration = Math.max(0, event.time - open.openStepStart)
-          open.stepDurations.push(duration)
-          state.stepSamples.push(duration)
+          open.stepDurations = bounded(open.stepDurations, duration, MAX_TURN_STEPS)
+          state.stepSamples = bounded(state.stepSamples, duration, MAX_STEP_SAMPLES)
         }
         open.openStepStart = undefined
         open.lastStep = event.data.step
@@ -135,7 +138,9 @@ export class TurnEtaModel {
         }
         // Anchor on how long turns run, whatever closed them: an aborted or
         // errored turn is still evidence of a turn's step count.
-        if (record.stepCount >= 1) state.completedTurnSteps.push(record.stepCount)
+        if (record.stepCount >= 1) {
+          state.completedTurnSteps = bounded(state.completedTurnSteps, record.stepCount, MAX_TURN_STEPS)
+        }
         return { record }
       }
       default:

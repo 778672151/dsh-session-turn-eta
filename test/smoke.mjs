@@ -95,7 +95,7 @@ check('running -> bar ~50%', () => {
   const b = bar(tree)
   const v = Number(b.props['aria-valuenow'])
   assert.ok(v >= 49 && v <= 51, 'expected ~50, got ' + v)
-  assert.ok(String(b.props['aria-valuetext']).includes('turnProgress.etaSeconds'), 'missing eta text')
+  assert.ok(String(b.props['aria-valuetext']).includes('turnProgress.eta'), 'missing eta text')
 })
 check('completed -> 100%', () => {
   const tree = render({ open: false, startTime: 0, completedSteps: 3, completed: true })

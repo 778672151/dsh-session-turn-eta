@@ -56,7 +56,7 @@ check('predicts a total from history once a turn completed', () => {
   const r = m.apply(s, ev('turn/start', end, { turn: 2 }))
   assert.equal(r.prediction.method, 'step-mean')
   assert.equal(r.prediction.expectedSteps, 5)
-  assert.ok(r.prediction.predictedTotalMs >= 4000 && r.prediction.predictedTotalMs <= 6000, 'total ~5000, got ' + r.prediction.predictedTotalMs)
+  assert.ok(r.prediction.predictedTotalMs >= 3500 && r.prediction.predictedTotalMs <= 6000, 'total ~4500, got ' + r.prediction.predictedTotalMs)
 })
 
 check('a 9-hour outlier step does not blow up the estimate', () => {
@@ -104,6 +104,22 @@ check('the expected step count grows once the turn outlives history', () => {
     if (i === 5) atSix = p.expectedSteps
   }
   assert.ok(atSix > 3, 'expected the anchor to grow past history, got ' + atSix)
+})
+
+check('the interval brackets the point estimate and never inverts', () => {
+  const m = new TurnEtaModel(); const s = session()
+  const end = completedTurn(m, s, 1, 0, [1000, 2000, 1500, 3000])
+  let t = end
+  m.apply(s, ev('turn/start', t, { turn: 2 }))
+  for (let i = 1; i <= 5; i++) {
+    m.apply(s, ev('step/start', t, { turn: 2, step: i }))
+    t += 1500
+    const p = m.apply(s, ev('step/end', t, { turn: 2, step: i })).prediction
+    assert.ok(p.interval, 'expected an interval')
+    assert.ok(Number.isFinite(p.interval.lowMs) && Number.isFinite(p.interval.highMs), 'interval must be finite')
+    assert.ok(p.interval.lowMs <= p.remainingMs, 'low must not exceed the point: ' + JSON.stringify({ interval: p.interval, remainingMs: p.remainingMs }))
+    assert.ok(p.remainingMs <= p.interval.highMs, 'high must not undercut the point: ' + JSON.stringify({ interval: p.interval, remainingMs: p.remainingMs }))
+  }
 })
 
 console.log(failures === 0 ? 'ALL PASS' : failures + ' FAILED')
