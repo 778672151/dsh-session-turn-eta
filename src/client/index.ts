@@ -12,8 +12,11 @@ export const zh = {
   'turnProgress.running': '进度 {percent}%',
   'turnProgress.indeterminate': '进行中…',
   'turnProgress.completed': '进度 100%',
+  'turnProgress.finishing': '即将完成…',
   'turnProgress.failed': '进度已中断',
-  'turnProgress.eta': '约剩 {seconds} 秒',
+  'turnProgress.etaSeconds': '约剩 {seconds} 秒',
+  'turnProgress.etaMinutes': '约剩 {minutes} 分 {seconds} 秒',
+  'turnProgress.etaHours': '约剩 {hours} 时 {minutes} 分',
 }
 
 /** English dictionary. */
@@ -21,8 +24,11 @@ export const en = {
   'turnProgress.running': 'Progress {percent}%',
   'turnProgress.indeterminate': 'In progress…',
   'turnProgress.completed': 'Progress 100%',
+  'turnProgress.finishing': 'Finishing…',
   'turnProgress.failed': 'Progress interrupted',
-  'turnProgress.eta': '~{seconds}s left',
+  'turnProgress.etaSeconds': '~{seconds}s left',
+  'turnProgress.etaMinutes': '~{minutes}m {seconds}s left',
+  'turnProgress.etaHours': '~{hours}h {minutes}m left',
 }
 
 /** Client services required by this plugin. */

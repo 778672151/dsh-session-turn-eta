@@ -66,6 +66,23 @@ export function turnProgressPercent(eta: TurnEtaProjection, now: number): number
 }
 
 /**
+ * Human-readable remaining time: seconds under a minute, minutes and seconds
+ * under an hour, then hours and minutes, so long estimates stay readable.
+ * @param t - the dock locale seat.
+ * @param remainingMs - remaining milliseconds.
+ * @returns the localized remaining-time label.
+ */
+function remainingLabel(t: ChatViewSlotProps['t'], remainingMs: number): string {
+  const totalSeconds = Math.max(0, Math.round(remainingMs / 1_000))
+  if (totalSeconds < 60) return t('turnProgress.etaSeconds', { seconds: totalSeconds })
+  const totalMinutes = Math.floor(totalSeconds / 60)
+  if (totalMinutes < 60) {
+    return t('turnProgress.etaMinutes', { minutes: totalMinutes, seconds: totalSeconds % 60 })
+  }
+  return t('turnProgress.etaHours', { hours: Math.floor(totalMinutes / 60), minutes: totalMinutes % 60 })
+}
+
+/**
  * The composer-dock progress bar. Renders nothing before a session's first turn.
  * @param props - the projection read seat and the dock locale seat.
  * @returns the bar, percentage label, and live remaining estimate.
@@ -86,17 +103,30 @@ export function TurnProgress({ useProjection, t }: TurnProgressProps) {
   const remainingMs = status === 'running' && eta.predictedTotalMs !== undefined
     ? Math.max(0, eta.predictedTotalMs - Math.max(0, now - eta.startTime))
     : undefined
+  // The published total never rises, so a turn that outlives its estimate keeps
+  // a zero remainder. Report that as "finishing" rather than a misleading "0s left".
+  const exhausted = status === 'running' && remainingMs === 0
   const label = status === 'completed'
     ? t('turnProgress.completed')
     : status === 'failed'
       ? t('turnProgress.failed')
-      : percent === undefined
-        ? t('turnProgress.indeterminate')
-        : t('turnProgress.running', { percent })
-  const remaining = remainingMs === undefined ? undefined : t('turnProgress.eta', { seconds: Math.ceil(remainingMs / 1_000) })
+      : exhausted
+        ? t('turnProgress.finishing')
+        : percent === undefined
+          ? t('turnProgress.indeterminate')
+          : t('turnProgress.running', { percent })
+  const remaining = remainingMs === undefined || exhausted ? undefined : remainingLabel(t, remainingMs)
+  const details = remaining === undefined ? label : `${label} · ${remaining}`
 
   return (
-    <div className={css.root} data-turn-progress data-status={status}>
+    <div
+      className={css.root}
+      data-turn-progress
+      data-status={status}
+      data-indeterminate={percent === undefined ? 'true' : undefined}
+      data-exhausted={exhausted ? 'true' : undefined}
+      title={details}
+    >
       <div
         className={css.track}
         role="progressbar"
@@ -104,9 +134,9 @@ export function TurnProgress({ useProjection, t }: TurnProgressProps) {
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={percent}
-        aria-valuetext={remaining === undefined ? label : `${label} · ${remaining}`}
+        aria-valuetext={details}
       >
-        <div className={css.fill} style={{ width: `${percent ?? 0}%` }} />
+        <div className={css.fill} style={percent === undefined ? undefined : { width: `${percent}%` }} />
       </div>
       <span className={css.label}>{label}</span>
       {remaining !== undefined && <span className={css.remaining}>{remaining}</span>}

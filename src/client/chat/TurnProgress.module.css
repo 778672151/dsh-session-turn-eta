@@ -17,6 +17,7 @@
 }
 
 .track {
+  position: relative;
   flex: 1;
   height: 4px;
   border-radius: 999px;
@@ -40,9 +41,43 @@
   background: var(--dsw-alias-status-danger, #d9534f);
 }
 
+.root[data-exhausted='true'] .fill {
+  animation: eta-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes eta-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.root[data-indeterminate='true'] .fill {
+  width: 35%;
+  animation: eta-indeterminate 1.4s ease-in-out infinite;
+}
+
+@keyframes eta-indeterminate {
+  0% {
+    margin-left: -35%;
+  }
+
+  100% {
+    margin-left: 100%;
+  }
+}
+
 .label,
 .remaining {
   white-space: nowrap;
+}
+
+.label {
+  min-width: 4.5em;
 }
 
 .remaining {
