@@ -13,7 +13,7 @@ const session = () => ({ id: 's', snapshotEvents: () => [] })
 let seq = 0
 const ev = (type, time, data) => ({ type, time, data, seq: seq++ })
 
-function completedTurn(model, sess, turn, start, durations) {
+function completedTurn(model, sess, turn, start, durations, reason = 'completed') {
   let t = start
   model.apply(sess, ev('turn/start', t, { turn }))
   for (let i = 0; i < durations.length; i++) {
@@ -21,15 +21,33 @@ function completedTurn(model, sess, turn, start, durations) {
     t += durations[i]
     model.apply(sess, ev('step/end', t, { turn, step: i + 1 }))
   }
-  model.apply(sess, ev('turn/end', t, { turn, reason: { kind: 'completed' } }))
+  model.apply(sess, ev('turn/end', t, { turn, reason: { kind: reason } }))
   return t
 }
 
-check('insufficient data before any completed turn', () => {
+check('insufficient data before any rate sample exists', () => {
   const m = new TurnEtaModel(); const s = session()
   const r = m.apply(s, ev('turn/start', 0, { turn: 1 }))
   assert.equal(r.prediction.method, 'insufficient-data')
   assert.equal(r.prediction.predictedTotalMs, undefined)
+})
+
+check('the first turn gets a bootstrap estimate once it has a step', () => {
+  const m = new TurnEtaModel(); const s = session()
+  m.apply(s, ev('turn/start', 0, { turn: 1 }))
+  m.apply(s, ev('step/start', 0, { turn: 1, step: 1 }))
+  const r = m.apply(s, ev('step/end', 5000, { turn: 1, step: 1 })).prediction
+  assert.equal(r.method, 'step-mean')
+  assert.ok(r.predictedTotalMs > 0, 'expected a bootstrap total, got ' + r.predictedTotalMs)
+  assert.ok(r.expectedSteps >= 10, 'expected the bootstrap step count, got ' + r.expectedSteps)
+})
+
+check('a non-completed turn still anchors the next turn', () => {
+  const m = new TurnEtaModel(); const s = session()
+  const start2 = completedTurn(m, s, 1, 0, [1000, 1000, 1000], 'aborted')
+  const r = m.apply(s, ev('turn/start', start2, { turn: 2 })).prediction
+  assert.equal(r.method, 'step-mean')
+  assert.equal(r.expectedSteps, 3)
 })
 
 check('predicts a total from history once a turn completed', () => {
@@ -63,7 +81,7 @@ check('re-anchors instead of saturating on a long turn', () => {
     const p = m.apply(s, ev('step/end', t, { turn: 2, step: i + 1 })).prediction
     if (prevTotal !== undefined && p.predictedTotalMs > prevTotal) {
       reAnchors++
-      assert.ok(prevTotal <= t - start2, 're-anchored before the turn outran the estimate (' + prevTotal + ' > ' + (t - start2) + ')')
+      assert.ok(prevTotal <= t - start2, 're-anchored before the turn outran the estimate')
     }
     prevTotal = p.predictedTotalMs
     lastRemaining = p.remainingMs
@@ -78,14 +96,14 @@ check('the expected step count grows once the turn outlives history', () => {
   const start2 = completedTurn(m, s, 1, 0, [1000, 1000, 1000])
   let t = start2
   m.apply(s, ev('turn/start', t, { turn: 2 }))
-  let atFive = 0
+  let atSix = 0
   for (let i = 0; i < 6; i++) {
     m.apply(s, ev('step/start', t, { turn: 2, step: i + 1 }))
     t += 1000
     const p = m.apply(s, ev('step/end', t, { turn: 2, step: i + 1 })).prediction
-    if (i === 5) atFive = p.expectedSteps
+    if (i === 5) atSix = p.expectedSteps
   }
-  assert.ok(atFive > 3, 'expected the anchor to grow past history, got ' + atFive)
+  assert.ok(atSix > 3, 'expected the anchor to grow past history, got ' + atSix)
 })
 
 console.log(failures === 0 ? 'ALL PASS' : failures + ' FAILED')

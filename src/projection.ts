@@ -167,9 +167,11 @@ export const turnEtaProjectionDefinition = {
         const open = state.open
         if (open === undefined || open.turn !== event.data.turn) return state
         const completed = event.data.reason.kind === 'completed'
+        const stepCount = open.stepDurations.length
         return {
-          completedTurnSteps: completed
-            ? [...state.completedTurnSteps, open.stepDurations.length]
+          // Anchor on how long turns run, whatever closed them.
+          completedTurnSteps: stepCount >= 1
+            ? [...state.completedTurnSteps, stepCount]
             : state.completedTurnSteps,
           stepSamples: state.stepSamples,
           last: {

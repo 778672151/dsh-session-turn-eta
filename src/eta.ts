@@ -20,7 +20,7 @@ interface OpenTurn {
   readonly stepDurations: number[]
   openStepStart: number | undefined
   lastStep: number
-  /** Monotonic total anchor shared with the projection estimator. */
+  /** Re-anchoring total shared with the projection estimator. */
   lastTotalMs: number | undefined
 }
 
@@ -133,7 +133,9 @@ export class TurnEtaModel {
           completed: event.data.reason.kind === 'completed',
           reason: event.data.reason.kind,
         }
-        if (record.completed) state.completedTurnSteps.push(record.stepCount)
+        // Anchor on how long turns run, whatever closed them: an aborted or
+        // errored turn is still evidence of a turn's step count.
+        if (record.stepCount >= 1) state.completedTurnSteps.push(record.stepCount)
         return { record }
       }
       default:

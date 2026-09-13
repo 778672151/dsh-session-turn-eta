@@ -51,9 +51,16 @@ const HISTORY_PRIOR_STEPS = 1
 const RATE_FLOOR = 0.25
 const RATE_CEILING = 4
 
-/** Runway kept when the turn already outran every completed turn in the session. */
+/** Runway kept when the turn already outran every finished turn in the session. */
 const OUTRUN_GROWTH = 0.25
 const OUTRUN_MINIMUM = 2
+
+/**
+ * Expected step count assumed before the session has any finished turn, so the
+ * very first turn still gets a live estimate instead of an endless indeterminate
+ * bar. Every later turn replaces it with the session's own median.
+ */
+const BOOTSTRAP_EXPECTED_STEPS = 10
 
 /** Median of a non-empty ascending numeric list, or undefined for an empty list. */
 function median(values: readonly number[]): number | undefined {
@@ -93,8 +100,7 @@ function expectedTotalSteps(
   completedTurnSteps: readonly number[],
   completedSteps: number,
 ): number | undefined {
-  const base = median(ascending(completedTurnSteps))
-  if (base === undefined) return undefined
+  const base = median(ascending(completedTurnSteps)) ?? BOOTSTRAP_EXPECTED_STEPS
   if (completedSteps <= 0) return base
   const longer = completedTurnSteps.filter((count) => count >= completedSteps)
   if (longer.length > 0) return Math.max(base, median(ascending(longer)) as number)
