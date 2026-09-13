@@ -1,0 +1,57 @@
+{
+  "name": "@dsh-external/dsh-session-turn-eta",
+  "version": "0.1.0",
+  "description": "Predicts the remaining wall time of the live DeepSeek Harness turn from its step history and shows it as a progress bar with a live percentage under the composer.",
+  "type": "module",
+  "main": "./lib/index.js",
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "keywords": ["deepseek", "harness", "dsh", "dsh-plugin", "progress", "eta", "ui"],
+  "scripts": {
+    "build": "tsdown",
+    "build:client": "tsdown",
+    "prepare": "tsdown",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node test/smoke.mjs"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": ">=4.0.0-rc <5",
+    "@deepseek-ai/dsh-session": ">=0.0.1-rc <2",
+    "@deepseek-ai/dsh-session-projection": ">=0.0.1-rc <2"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "tsdown": "^0.22.14",
+    "typescript": "^5.9.0"
+  },
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-locale"
+      ],
+      "platform": "web"
+    }
+  }
+}

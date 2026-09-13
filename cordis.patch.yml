@@ -1,0 +1,6 @@
+# @dsh-external/dsh-session-turn-eta bundle 层：插入会话剩余时间预测插件行。
+# 插件只观察持久化 session 事件并注册 turnEta 投影，不注册模型可见能力。
+- insert:
+    - id: dsh-session-turn-eta
+      name: '@dsh-external/dsh-session-turn-eta'
+      config: {}
