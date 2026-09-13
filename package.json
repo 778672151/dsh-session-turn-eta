@@ -15,7 +15,6 @@
   "scripts": {
     "build": "tsdown",
     "build:client": "tsdown",
-    "prepare": "tsdown",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node test/smoke.mjs"
   },
