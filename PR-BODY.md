@@ -8,10 +8,11 @@ Adds one plugin to the list.
 
 ## What it does
 
-The plugin predicts how much wall time the current turn still needs, from the
-mean duration of the turn's completed steps, and renders it as a progress bar
-with a live percentage and an estimated time left under the composer. A
-completed turn reads 100%; a failed or interrupted one turns the bar red.
+The plugin predicts how much wall time the current turn still needs and renders
+it as a progress bar with a live percentage and an estimated time left under the
+composer. The estimate is re-anchored as the turn runs, so it stays meaningful
+for long turns; a completed turn reads 100%, and a failed or interrupted one
+turns the bar red.
 
 ## Installability
 
@@ -23,12 +24,16 @@ dsh plugin --profile web add github:778672151/dsh-session-turn-eta
 ```
 
 It also ships a browser half (`dsh.client`, `platform: web`) that registers a
-`conversation.composer.dock` entry.
+`conversation.composer.dock` entry. `lib/` is committed, so installing runs no
+build step (the package intentionally has no `prepare` script).
 
 ## Checks run locally
 
-- `npm pack` → tarball contains `lib/index.js`, `lib/client.js`, `cordis.patch.yml`, `LICENSE`, `README.md`
-- `dsh plugin --profile etatest add <tgz>` → exit 0, bundle composed into the profile
-- `node test/smoke.mjs` → loads both halves and asserts the running / completed / failed / indeterminate states (9/9 pass)
+- `dsh plugin --profile etatest add github:778672151/dsh-session-turn-eta` → exit 0,
+  bundle composed into the profile, no build approval required
+- `node test/smoke.mjs` → loads both halves and asserts the running / completed /
+  failed / indeterminate states
+- `node test/predict.mjs` → 7 host estimator invariants
+- `node test/render-real.mjs` → real React 18 SSR render
 
 The entry file is the only change in this PR.

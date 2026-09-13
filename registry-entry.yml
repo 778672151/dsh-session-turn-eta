@@ -4,5 +4,5 @@ url: https://github.com/778672151/dsh-session-turn-eta
 name: 778672151/dsh-session-turn-eta
 category: ui
 description:
-  en: Shows a live progress bar with a percentage and estimated time left for the current DeepSeek Harness turn, and turns the bar red when the turn fails or is interrupted.
-  zh: 为当前这一轮 DeepSeek Harness 任务显示实时进度条、百分比与预计剩余时间，任务失败或中断时进度条变红。
+  en: 'Live progress bar under the composer with a percentage and an estimated time left for the current DeepSeek Harness turn; the estimate re-anchors as the turn runs, and the bar turns red when the turn fails or is interrupted.'
+  zh: 在输入框下方显示当前这一轮 DeepSeek Harness 任务的实时进度条、百分比与预计剩余时间；估计随轮次实时重锚，任务失败或中断时进度条变红。
