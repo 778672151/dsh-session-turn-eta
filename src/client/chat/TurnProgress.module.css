@@ -1,0 +1,50 @@
+/* Live turn progress bar under the composer, in the same dock row as the
+   session-stats pills. Fallbacks keep the bar visible under any theme. */
+
+.root {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: var(--dsh-chat-content-width);
+  width: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
+  padding: 2px calc(var(--dsh-composer-side-clearance) + 16px) 0px;
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: calc(20px + var(--dsh-content-font-delta-secondary, 0px));
+  color: var(--dsw-alias-label-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.track {
+  flex: 1;
+  height: 4px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--dsw-alias-fill-tertiary, rgba(127, 127, 127, 0.25));
+}
+
+.fill {
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: var(--dsw-alias-brand-primary, #4c8dff);
+  transition: width 0.2s ease;
+}
+
+.root[data-status='completed'] .fill {
+  background: var(--dsw-alias-status-success, #2e9e5b);
+}
+
+.root[data-status='failed'] .fill {
+  background: var(--dsw-alias-status-danger, #d9534f);
+}
+
+.label,
+.remaining {
+  white-space: nowrap;
+}
+
+.remaining {
+  color: var(--dsw-alias-label-secondary, var(--dsw-alias-label-tertiary));
+}

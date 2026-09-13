@@ -7,9 +7,11 @@ import assert from 'node:assert/strict'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 let failures = 0
-const check = (name, fn) => { try { fn(); console.log('PASS ' + name) } catch (e) { failures++; console.log('FAIL ' + name + ' :: ' + e.message) } }
+const check = (name, fn) => {
+  try { fn(); console.log('PASS ' + name) }
+  catch (e) { failures++; console.log('FAIL ' + name + ' :: ' + e.message) }
+}
 
-// ---- host half ----
 const host = await import('file://' + join(root, 'lib/index.js'))
 check('host exports name/inject/apply', () => {
   assert.equal(host.name, 'session-turn-eta')
@@ -18,7 +20,6 @@ check('host exports name/inject/apply', () => {
   assert.equal(typeof host.TurnEtaModel, 'function')
 })
 
-// ---- client half ----
 const code = readFileSync(join(root, 'lib/client.js'), 'utf8')
 let captured
 new Function('window', code)({ __ModuleLoader__: { load: (m) => { captured = m } } })
@@ -27,13 +28,28 @@ check('client bundle registers under its id', () => {
   assert.equal(captured.id, '@dsh-external/dsh-session-turn-eta')
   assert.equal(typeof captured.factory, 'function')
 })
+
+const element = (type, props) => ({ type, props: props || {} })
 const react = {
   memo: (f) => f,
-  createElement: (type, props, ...children) => ({ type, props: props || {}, children }),
+  createElement: (type, props, ...children) => element(type, {
+    ...(props || {}),
+    children: children.length === 0 ? (props && props.children) : (children.length === 1 ? children[0] : children),
+  }),
   useState: (init) => [typeof init === 'function' ? init() : init, () => {}],
   useEffect: () => {},
+  Fragment: Symbol('Fragment'),
 }
-const req = (id) => { if (id === 'react') return react; throw new Error('unexpected require: ' + id) }
+const jsxRuntime = {
+  jsx: (type, props) => element(type, props),
+  jsxs: (type, props) => element(type, props),
+  Fragment: react.Fragment,
+}
+const req = (id) => {
+  if (id === 'react') return react
+  if (id === 'react/jsx-runtime') return jsxRuntime
+  throw new Error('unexpected require: ' + id)
+}
 const mod = captured.factory(req)
 check('client exports apply/inject', () => {
   assert.equal(typeof mod.apply, 'function')
@@ -60,12 +76,17 @@ check('apply registers a conversation.composer.dock entry', () => {
 const Comp = registered[0].c
 const t = (k, p) => k + (p ? JSON.stringify(p) : '')
 const render = (eta) => Comp({ useProjection: () => eta, t })
-const find = (node, pred) => { if (!node || typeof node !== 'object') return null; if (pred(node)) return node; for (const c of (node.children || [])) { const hit = find(c, pred); if (hit) return hit } return null }
+const find = (node, pred) => {
+  if (node === null || node === undefined || typeof node !== 'object') return null
+  if (pred(node)) return node
+  const kids = node.props ? node.props.children : node.children
+  const list = Array.isArray(kids) ? kids : (kids === undefined ? [] : [kids])
+  for (const c of list) { const hit = find(c, pred); if (hit) return hit }
+  return null
+}
 const bar = (node) => find(node, (n) => n.props && n.props.role === 'progressbar')
 
-check('no projection -> renders nothing', () => {
-  assert.equal(render(undefined), null)
-})
+check('no projection -> renders nothing', () => { assert.equal(render(undefined), null) })
 check('running -> bar ~50%', () => {
   const now = Date.now()
   const tree = render({ open: true, startTime: now - 50000, completedSteps: 2, predictedTotalMs: 100000 })
