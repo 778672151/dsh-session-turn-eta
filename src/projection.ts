@@ -1,5 +1,5 @@
 /**
- * The `turnEta` projection unit: a pure whole-log fold of turn and step
+ * The \`turnEta\` projection unit: a pure whole-log fold of turn and step
  * events into the live remaining-time prediction the Web client renders under
  * the composer. State is plain JSON so the persisted projection cache can seed
  * a fold; the wire view reuses one object per state so an unchanged fold
@@ -10,7 +10,7 @@
 import { z } from 'zod'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import { etaCore } from './predict.ts'
-import type { TurnEtaProjection, TurnEtaState } from './types.ts'
+import type { OpenTurnState, TurnEtaProjection, TurnEtaState } from './types.ts'
 
 const openTurnSchema = z.object({
   turn: z.number().int().nonnegative(),
@@ -19,6 +19,7 @@ const openTurnSchema = z.object({
   stepDurations: z.array(z.number().nonnegative()),
   openStepStart: z.number().nonnegative().optional(),
   lastStep: z.number().int().nonnegative(),
+  lastTotalMs: z.number().nonnegative().optional(),
 }).strict()
 
 const stateSchema: z.ZodType<TurnEtaState> = z.object({
@@ -57,6 +58,29 @@ const EMPTY_STATE: TurnEtaState = { completedTurnSteps: [], stepSamples: [] }
 /** The wire view for one fold state; cached per state reference. */
 const views = new WeakMap<TurnEtaState, TurnEtaProjection>()
 
+/**
+ * Advance the open turn to \`asOf\` with a patch, refreshing the monotonic total
+ * anchor so the next view reads the same total the estimator just published.
+ */
+function advanceOpen(
+  state: TurnEtaState,
+  open: OpenTurnState,
+  asOf: number,
+  patch: Partial<OpenTurnState>,
+): OpenTurnState {
+  const next: OpenTurnState = { ...open, ...patch, asOf }
+  const core = etaCore({
+    startTime: next.startTime,
+    stepDurations: next.stepDurations,
+    completedTurnSteps: state.completedTurnSteps,
+    stepSamples: state.stepSamples,
+    asOf,
+    previousTotalMs: next.lastTotalMs,
+  })
+  if (core.predictedTotalMs === undefined) return next
+  return { ...next, lastTotalMs: core.predictedTotalMs }
+}
+
 function computeView(state: TurnEtaState): TurnEtaProjection {
   const open = state.open
   if (open !== undefined) {
@@ -66,6 +90,7 @@ function computeView(state: TurnEtaState): TurnEtaProjection {
       completedTurnSteps: state.completedTurnSteps,
       stepSamples: state.stepSamples,
       asOf: open.asOf,
+      previousTotalMs: open.lastTotalMs,
     })
     return { turn: open.turn, step: open.lastStep, open: true, startTime: open.startTime, ...core }
   }
@@ -95,10 +120,10 @@ function computeView(state: TurnEtaState): TurnEtaProjection {
   }
 }
 
-/** The `turnEta` unit registered on `ctx.sessionProjections` (exported for the unit spec). */
+/** The \`turnEta\` unit registered on \`ctx.sessionProjections\` (exported for the unit spec). */
 export const turnEtaProjectionDefinition = {
   key: 'turnEta',
-  stateVersion: 1,
+  stateVersion: 2,
   stateSchema,
   init: () => EMPTY_STATE,
   apply: (state, event) => {
@@ -106,47 +131,37 @@ export const turnEtaProjectionDefinition = {
       case 'turn/start':
         return {
           ...state,
-          open: {
+          open: advanceOpen(state, {
             turn: event.data.turn,
             startTime: event.time,
             asOf: event.time,
             stepDurations: [],
             lastStep: 0,
-          },
+          }, event.time, {}),
         }
       case 'step/start': {
         const open = state.open
         if (open === undefined || open.turn !== event.data.turn) return state
-        return {
-          ...state,
-          open: { ...open, asOf: event.time, openStepStart: event.time, lastStep: event.data.step },
-        }
+        return { ...state, open: advanceOpen(state, open, event.time, { openStepStart: event.time, lastStep: event.data.step }) }
       }
       case 'step/end': {
         const open = state.open
         if (open === undefined || open.turn !== event.data.turn) return state
-        if (open.openStepStart === undefined) {
-          return { ...state, open: { ...open, asOf: event.time, lastStep: event.data.step } }
-        }
-        const duration = Math.max(0, event.time - open.openStepStart)
-        return {
-          ...state,
-          open: {
-            turn: open.turn,
-            startTime: open.startTime,
-            asOf: event.time,
-            stepDurations: [...open.stepDurations, duration],
-            lastStep: event.data.step,
-          },
-          stepSamples: [...state.stepSamples, duration],
-        }
+        const stepDurations = open.openStepStart === undefined
+          ? open.stepDurations
+          : [...open.stepDurations, Math.max(0, event.time - open.openStepStart)]
+        const stepSamples = open.openStepStart === undefined
+          ? state.stepSamples
+          : [...state.stepSamples, Math.max(0, event.time - open.openStepStart)]
+        const next = { ...state, stepSamples }
+        return { ...next, open: advanceOpen(next, open, event.time, { stepDurations, openStepStart: undefined, lastStep: event.data.step }) }
       }
       case 'assistant/message':
       case 'tool/call':
       case 'tool/result': {
         const open = state.open
         if (open === undefined || open.turn !== event.data.turn) return state
-        return { ...state, open: { ...open, asOf: event.time, lastStep: event.data.step } }
+        return { ...state, open: advanceOpen(state, open, event.time, { lastStep: event.data.step }) }
       }
       case 'turn/end': {
         const open = state.open

@@ -20,6 +20,8 @@ interface OpenTurn {
   readonly stepDurations: number[]
   openStepStart: number | undefined
   lastStep: number
+  /** Monotonic total anchor shared with the projection estimator. */
+  lastTotalMs: number | undefined
 }
 
 interface SessionState {
@@ -88,6 +90,7 @@ export class TurnEtaModel {
           stepDurations: [],
           openStepStart: undefined,
           lastStep: 0,
+          lastTotalMs: undefined,
         }
         state.open = open
         return { prediction: this.predict(session, open, event.time) }
@@ -140,17 +143,20 @@ export class TurnEtaModel {
 
   private predict(session: Session, open: OpenTurn, asOf: number): TurnEtaPrediction {
     const state = this.state(session)
+    const core = etaCore({
+      startTime: open.startTime,
+      stepDurations: open.stepDurations,
+      completedTurnSteps: state.completedTurnSteps,
+      stepSamples: state.stepSamples,
+      asOf,
+      previousTotalMs: open.lastTotalMs,
+    })
+    if (core.predictedTotalMs !== undefined) open.lastTotalMs = core.predictedTotalMs
     return {
       sessionId: session.id,
       turn: open.turn,
       step: open.lastStep,
-      ...etaCore({
-        startTime: open.startTime,
-        stepDurations: open.stepDurations,
-        completedTurnSteps: state.completedTurnSteps,
-        stepSamples: state.stepSamples,
-        asOf,
-      }),
+      ...core,
     }
   }
 }

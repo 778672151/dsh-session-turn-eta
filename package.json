@@ -1,6 +1,6 @@
 {
   "name": "@dsh-external/dsh-session-turn-eta",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Predicts the remaining wall time of the live DeepSeek Harness turn from its step history and shows it as a progress bar with a live percentage under the composer.",
   "type": "module",
   "main": "./lib/index.js",
@@ -16,7 +16,7 @@
     "build": "tsdown",
     "build:client": "tsdown",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node test/smoke.mjs"
+    "test": "node test/smoke.mjs && node test/predict.mjs"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": ">=4.0.0-rc <5",

@@ -21,8 +21,12 @@ appears under the input box while the turn runs.
 ## How it works
 
 The host half registers a `turnEta` session projection: it folds the durable
-`turn/start`, `step/start`, `step/end` and `turn/end` events into a prediction
-whose total is estimated from the mean duration of the turn's completed steps.
+`turn/start`, `step/start`, `step/end` and `turn/end` events into a prediction.
+The per-step rate is a blend of the live turn's own observed rate and the
+session's **median** historical step duration, so one very long step (an idle
+gap) cannot distort it; the expected step count is the historical median, raised
+to the steps already observed. The published total then never rises while the
+turn is open, so the percentage cannot move backwards between events.
 The client half reads that projection through the standard `useProjection` seat
 and renders it on the `conversation.composer.dock` slot. The plugin never
 mutates the session and registers no model-visible capability.

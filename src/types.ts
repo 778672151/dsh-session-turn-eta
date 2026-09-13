@@ -63,6 +63,11 @@ export interface OpenTurnState {
   /** Epoch ms of the open step's `step/start`; absent between steps. */
   readonly openStepStart?: number | undefined
   readonly lastStep: number
+  /**
+   * The total ms already published for this open turn. The estimator clamps the
+   * live estimate to it so the rendered percentage cannot move backwards.
+   */
+  readonly lastTotalMs?: number | undefined
 }
 
 /** A finished turn's summary, retained for the client's terminal state. */
