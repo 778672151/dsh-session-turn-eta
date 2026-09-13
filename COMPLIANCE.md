@@ -56,3 +56,30 @@ cat /tmp/dsh-eta-home/profiles/etatest/package.json
 dsh plugin --profile etatest list
 → @dsh-external/dsh-session-turn-eta@0.1.0
 ```
+
+## Composition evidence (real profile, non-interactive)
+
+```
+DSH_HOME=/tmp/dsh-eta-home dsh --profile etatest --dump-config
+→ EXIT 0
+→ line 333: # == @dsh-external/dsh-session-turn-eta
+→ line 334: - id: dsh-session-turn-eta
+→ line 335:   name: '@dsh-external/dsh-session-turn-eta'
+→ line 336:   config: {}
+```
+
+This is the same bundle-patch composition path `dsh web` uses, so the entry
+compiles into a real profile tree.
+
+## Phase 4 status
+
+Local repo: `git init`, 2 commits on `main` (repo has root `cordis.patch.yml`,
+`dsh.bundle` manifest, LICENSE, README, and the client half committed).
+
+Blocked: no GitHub token on this host, so a new repository cannot be created via
+the API. SSH push is available (`ssh -T git@github.com` → `Hi 778672151!`).
+Once the repo exists: `git remote add origin git@github.com:778672151/dsh-session-turn-eta.git`
+and `git push -u origin main`; the PR adds
+`data/plugins/778672151__dsh-session-turn-eta.yml` (see `PHASE4.md`,
+`registry-entry.yml`, `PR-BODY.md`). Reminder: the repo must be >= 1 day old
+before the list's CI accepts the PR.
