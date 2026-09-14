@@ -107,6 +107,13 @@ check('failed -> interrupted status', () => {
   assert.equal(tree.props['data-status'], 'failed')
   assert.equal(bar(tree).props['aria-valuenow'], 100)
 })
+check('running past its total never reports 100', () => {
+  const now = Date.now()
+  const tree = render({ open: true, startTime: now - 200000, completedSteps: 5, predictedTotalMs: 100000 })
+  assert.equal(tree.props['data-status'], 'running')
+  const v = Number(bar(tree).props['aria-valuenow'])
+  assert.ok(v <= 99, 'an open turn must never reach 100, got ' + v)
+})
 check('running without a total -> indeterminate', () => {
   const tree = render({ open: true, startTime: Date.now(), completedSteps: 1 })
   assert.equal(tree.props['data-status'], 'running')

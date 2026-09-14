@@ -79,16 +79,15 @@ check('re-anchors instead of saturating on a long turn', () => {
     m.apply(s, ev('step/start', t, { turn: 2, step: i + 1 }))
     t += 1000
     const p = m.apply(s, ev('step/end', t, { turn: 2, step: i + 1 })).prediction
-    if (prevTotal !== undefined && p.predictedTotalMs > prevTotal) {
-      reAnchors++
-      assert.ok(prevTotal <= t - start2, 're-anchored before the turn outran the estimate')
-    }
+    if (prevTotal !== undefined && p.predictedTotalMs > prevTotal) reAnchors++
     prevTotal = p.predictedTotalMs
     lastRemaining = p.remainingMs
+    // The bar must never be able to show completion while the turn is open.
+    assert.ok(p.remainingMs > 0, 'remaining must stay positive at step ' + (i + 1) + ', got ' + p.remainingMs)
+    assert.ok(p.predictedTotalMs > t - start2, 'the total must cover the elapsed time at step ' + (i + 1))
   }
   assert.ok(reAnchors > 0, 'expected at least one re-anchor on a turn past history')
   assert.ok(lastRemaining > 0, 'the estimate should stay live, got remaining ' + lastRemaining)
-  assert.ok(prevTotal > t - start2, 'the re-anchored total should still cover the elapsed time')
 })
 
 check('the expected step count grows once the turn outlives history', () => {

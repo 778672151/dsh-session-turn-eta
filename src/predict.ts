@@ -44,8 +44,15 @@ export interface EtaCore {
   readonly method: TurnEtaMethod
 }
 
-/** Prior weight, in steps, of the historical median against the live turn's own rate. */
+/** Prior weight, in steps, of the historical rate against the live turn's own rate. */
 const HISTORY_PRIOR_STEPS = 1
+
+/**
+ * Percentile of the step-duration history used as the central per-step rate.
+ * The distribution is right-skewed, so a lower quantile minimises relative error
+ * and resists one very long step.
+ */
+const RATE_PERCENTILE = 0.4
 
 /** Safe bound on the blended per-step estimate relative to the historical median. */
 const RATE_FLOOR = 0.25
@@ -124,7 +131,7 @@ export function etaCore(input: EtaPredictionInput): EtaCore {
   const completedSteps = input.stepDurations.length
   const elapsedMs = Math.max(0, input.asOf - input.startTime)
   const samples = ascending(input.stepSamples)
-  const historyRate = samples.length === 0 ? undefined : quantile(samples, 0.5)
+  const historyRate = samples.length === 0 ? undefined : quantile(samples, RATE_PERCENTILE)
   const base: EtaCore = { elapsedMs, completedSteps, method: 'insufficient-data' }
   if (historyRate === undefined || historyRate <= 0) return base
   const expectedSteps = expectedTotalSteps(input.completedTurnSteps, completedSteps)
@@ -141,11 +148,16 @@ export function etaCore(input: EtaPredictionInput): EtaCore {
   )
   const rawTotalMs = meanStepMs * expectedSteps
   const previousTotalMs = input.previousTotalMs
-  const predictedTotalMs = previousTotalMs === undefined
+  let predictedTotalMs = previousTotalMs === undefined
     ? rawTotalMs
     : rawTotalMs > previousTotalMs && elapsedMs >= previousTotalMs
       ? rawTotalMs
       : Math.min(rawTotalMs, previousTotalMs)
+  // Keep at least one step of runway while the turn is open, so the estimate
+  // cannot report completion before the turn actually ends.
+  if (predictedTotalMs <= elapsedMs) {
+    predictedTotalMs = Math.max(rawTotalMs, elapsedMs + Math.max(meanStepMs, 1))
+  }
   const remainingMs = Math.max(0, predictedTotalMs - elapsedMs)
   const lowRate = quantile(samples, 0.25)
   const highRate = quantile(samples, 0.75)

@@ -15,6 +15,9 @@ import css from './TurnProgress.module.css'
 /** Local tick while a turn is open; the wire only advances on session events. */
 const TICK_MS = 250
 
+/** Ceiling for an open turn, so the bar never claims completion before the turn ends. */
+const MAX_OPEN_PERCENT = 99
+
 /** Live, succeeded, or failed status of the projected turn. */
 export type TurnProgressStatus = 'running' | 'completed' | 'failed'
 
@@ -57,10 +60,10 @@ export function turnProgressStatus(eta: TurnEtaProjection): TurnProgressStatus |
 export function turnProgressPercent(eta: TurnEtaProjection, now: number): number | undefined {
   if (!eta.open) return eta.completed === undefined ? undefined : 100
   if (eta.predictedTotalMs !== undefined && eta.predictedTotalMs > 0) {
-    return clampPercent((now - eta.startTime) / eta.predictedTotalMs * 100)
+    return Math.min(MAX_OPEN_PERCENT, clampPercent((now - eta.startTime) / eta.predictedTotalMs * 100))
   }
   if (eta.expectedSteps !== undefined && eta.expectedSteps > 0) {
-    return clampPercent(eta.completedSteps / eta.expectedSteps * 100)
+    return Math.min(MAX_OPEN_PERCENT, clampPercent(eta.completedSteps / eta.expectedSteps * 100))
   }
   return undefined
 }
