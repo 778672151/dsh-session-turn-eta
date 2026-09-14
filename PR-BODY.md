@@ -10,9 +10,9 @@ Adds one plugin to the list.
 
 The plugin predicts how much wall time the current turn still needs and renders
 it as a progress bar with a live percentage and an estimated time left under the
-composer. The estimate is re-anchored as the turn runs, so it stays meaningful
-for long turns; a completed turn reads 100%, and a failed or interrupted one
-turns the bar red.
+composer. The estimate re-anchors as the turn runs, and the bar never reads 100%
+until the turn actually ends; a completed turn reads 100%, and a failed or
+interrupted one turns the bar red.
 
 ## Installability
 
@@ -32,8 +32,13 @@ build step (the package intentionally has no `prepare` script).
 - `dsh plugin --profile etatest add github:778672151/dsh-session-turn-eta` → exit 0,
   bundle composed into the profile, no build approval required
 - `node test/smoke.mjs` → loads both halves and asserts the running / completed /
-  failed / indeterminate states
-- `node test/predict.mjs` → 7 host estimator invariants
+  failed / indeterminate states, plus "an open turn never reports 100%"
+- `node test/predict.mjs` → host estimator invariants (robustness to a 9-hour
+  outlier step, bootstrap, non-completed-turn anchoring, a positive remainder at
+  every open-turn step)
 - `node test/render-real.mjs` → real React 18 SSR render
+- Backtest over 21 real sessions: an open turn always reports a positive
+  remainder (minimum 106 ms), and MAPE improves from 71.2% to 65.2% over the
+  previous rate estimator
 
 The entry file is the only change in this PR.
