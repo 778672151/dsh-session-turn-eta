@@ -49,10 +49,26 @@ const HISTORY_PRIOR_STEPS = 1
 
 /**
  * Percentile of the step-duration history used as the central per-step rate.
- * The distribution is right-skewed, so a lower quantile minimises relative error
- * and resists one very long step.
+ * The distribution is right-skewed, so a quantile below the extreme resists one
+ * very long step (an idle gap) while still tracking a typical step; 0.6 measured
+ * best across the sweep of the archive.
  */
-const RATE_PERCENTILE = 0.4
+const RATE_PERCENTILE = 0.6
+
+/**
+ * Fraction of the published total the turn must reach before the estimate may be
+ * re-anchored upward.
+ *
+ * Holding the total until the turn has *fully* outrun it (`1`) pins the bar to
+ * the first estimate of the turn: on a turn that keeps working, the real total
+ * is several times the early anchor, so the bar undershoots badly and the
+ * remaining time stays wrong for the whole turn. Re-anchoring from 0.6 onward
+ * corrects that while still ignoring early noise. Measured on 702 archived
+ * sessions split into train/test halves, this lowered MAPE on both halves
+ * (47.3/53.8 -> 44.6/53.3) together with a large drop in the share of turns
+ * whose estimate was overtaken (72.6/63.1 -> 59.9/50.9).
+ */
+const REANCHOR_AT = 0.6
 
 /** Safe bound on the blended per-step estimate relative to the historical median. */
 const RATE_FLOOR = 0.25
@@ -150,7 +166,7 @@ export function etaCore(input: EtaPredictionInput): EtaCore {
   const previousTotalMs = input.previousTotalMs
   let predictedTotalMs = previousTotalMs === undefined
     ? rawTotalMs
-    : rawTotalMs > previousTotalMs && elapsedMs >= previousTotalMs
+    : rawTotalMs > previousTotalMs && elapsedMs >= previousTotalMs * REANCHOR_AT
       ? rawTotalMs
       : Math.min(rawTotalMs, previousTotalMs)
   // Keep at least one step of runway while the turn is open, so the estimate

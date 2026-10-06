@@ -1,6 +1,6 @@
 {
   "name": "@dsh-external/dsh-session-turn-eta",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Predicts the remaining wall time of the live DeepSeek Harness turn from its step history and shows it as a progress bar with a live percentage under the composer.",
   "type": "module",
   "main": "./lib/index.js",

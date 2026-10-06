@@ -105,5 +105,48 @@ check('the expected step count grows once the turn outlives history', () => {
   assert.ok(atSix > 3, 'expected the anchor to grow past history, got ' + atSix)
 })
 
+check('re-anchors upward before the turn fully outruns the estimate', () => {
+  // A turn whose real total is far past the first anchor must stop being pinned
+  // to that anchor. Holding until elapsed >= total (the old rule) froze the bar
+  // at the early estimate and left the remaining time wrong for the whole turn.
+  const m = new TurnEtaModel(); const s = session()
+  // History: many short turns, so the first anchor is far below the real total.
+  let t = 0
+  for (let turn = 1; turn <= 5; turn++) t = completedTurn(m, s, turn, t, [1000, 1000])
+  m.apply(s, ev('turn/start', t, { turn: 6 }))
+  const start = t
+  let firstTotal
+  let total
+  for (let i = 0; i < 40; i++) {
+    m.apply(s, ev('step/start', t, { turn: 6, step: i + 1 }))
+    t += 3000
+    total = m.apply(s, ev('step/end', t, { turn: 6, step: i + 1 })).prediction.predictedTotalMs
+    if (firstTotal === undefined) firstTotal = total
+    assert.ok(total >= firstTotal, 'the published total must never shrink')
+  }
+  const elapsed = t - start
+  // The turn ran to 120s against a history of 2s turns: the estimate has to have
+  // grown well past its first value rather than staying pinned to it.
+  assert.ok(total > firstTotal * 3, 'expected growth past the first anchor: ' + firstTotal + ' -> ' + total)
+  assert.ok(elapsed > firstTotal * 0.6, 'test premise: the turn should have passed the re-anchor point')
+})
+
+check('the total always stays ahead of the elapsed time, even across a long gap', () => {
+  // The guarantee that keeps the bar off 100% is *runway*, not monotonicity: the
+  // published total may fall back (the live estimate can drop), but it must never
+  // sit at or behind the elapsed time of an open turn.
+  const m = new TurnEtaModel(); const s = session()
+  const start2 = completedTurn(m, s, 1, 0, [2000, 2000, 2000])
+  let t = start2
+  m.apply(s, ev('turn/start', t, { turn: 2 }))
+  for (let i = 0; i < 12; i++) {
+    m.apply(s, ev('step/start', t, { turn: 2, step: i + 1 }))
+    t += i === 6 ? 90000 : 1000  // one long tool call mid-turn
+    const p = m.apply(s, ev('step/end', t, { turn: 2, step: i + 1 })).prediction
+    assert.ok(p.predictedTotalMs > t - start2, 'total must cover elapsed at step ' + (i + 1) + ': ' + p.predictedTotalMs + ' vs ' + (t - start2))
+    assert.ok(p.remainingMs > 0, 'remaining must stay positive at step ' + (i + 1))
+  }
+})
+
 console.log(failures === 0 ? 'ALL PASS' : failures + ' FAILED')
 process.exit(failures === 0 ? 0 : 1)
