@@ -5,10 +5,11 @@ progress bar with a live percentage under the composer.
 
 - **Running** — a bar whose width follows elapsed time over the predicted total,
   with a percentage and a humanised time left (`~12m 34s left` / `约剩 12 分 34 秒`).
-  The percentage ticks locally while the turn is open.
+  The percentage ticks locally while the turn is open. The filled track ends in
+  a leading dot and carries a slow shimmer.
 - **Finishing** — once a turn outruns its own estimate the bar fills and pulses
   with a "finishing" label, instead of a misleading "0s left".
-- **Completed** — 100%.
+- **Completed** — 100%, with a short one-shot burst at the tip.
 - **Failed or interrupted** — the bar turns red and reads "progress interrupted".
 
 ## Install
@@ -25,7 +26,7 @@ appears under the input box while the turn runs.
 
 | | |
 |---|---|
-| DeepSeek Harness | tested against `@deepseek-ai/dsh-*` `0.1.5-rc.1` (checkout `aa8262ec09`) |
+| DeepSeek Harness | verified on `0.1.6-alpha.1` (the Windows desktop build in use; checkout `0d1f5000`) and contract-checked against `0.1.7-alpha.2` |
 | `@deepseek-ai/cordis` | `>=4.0.0-rc <5` |
 | `@deepseek-ai/dsh-session` | `>=0.0.1-rc <2` |
 | `@deepseek-ai/dsh-session-projection` | `>=0.0.1-rc <2` |
@@ -37,12 +38,13 @@ The host half registers a `turnEta` session projection: it folds the durable
 `turn/start`, `step/start`, `step/end` and `turn/end` events into a prediction.
 
 - The per-step rate blends the live turn's own observed rate with the session's
-  **60th-percentile** historical step duration, so one very long step (an idle
-  gap) cannot distort it.
+  **90th-percentile** historical step duration (read after winsorising the sample
+  at `8 x median`), so the rate tracks the steps that dominate a turn while a
+  single 9-hour idle gap still cannot drag it up.
 - The expected step count is the **conditional median** of the finished turns
   that were at least as long as this one, so a growing turn keeps a live estimate.
 - The published total is held against early noise and **re-anchored** upward once
-  the turn has passed **60%** of it, so a turn that keeps working stops being
+  the turn has passed **50%** of it, so a turn that keeps working stops being
   pinned to its first guess and the estimate never sits at 100% while it runs.
 - The total always keeps **at least one step of runway** while the turn is open,
   so a prediction can never report completion before the turn actually ends.
@@ -56,6 +58,30 @@ The host half registers a `turnEta` session projection: it folds the durable
 The client half reads that projection through the standard `useProjection` seat
 and renders it on the `conversation.composer.dock` slot. The plugin never
 mutates the session and registers no model-visible capability.
+
+## Skins
+
+The bar ships five skins: `auto` (harness theme tokens, the default and the only
+one that follows light/dark automatically), `bilibili`, `mint`, `sunset`, and
+`ocean`. A skin only owns the fill gradient, the leading-dot glow, the track
+tint, and the celebration colour; layout and accessibility never change.
+
+Pick one either per render or document-wide:
+
+```tsx
+// per render (the dock entry accepts an optional `skin` prop)
+<TurnProgress skin="bilibili" ... />
+```
+
+```html
+<!-- document-wide, e.g. in the host page or a user script -->
+<body data-turn-eta-skin="ocean">
+```
+
+The client entry exports `TURN_ETA_SKINS`, `TURN_ETA_DEFAULT_SKIN`,
+`TURN_ETA_SKIN_ATTRIBUTE`, `isTurnEtaSkin()` and `resolveTurnEtaSkin()`. Unknown
+values fall back to `auto`. All motion (shimmer, pulse, celebration) is disabled
+under `prefers-reduced-motion: reduce`.
 
 ## Build
 

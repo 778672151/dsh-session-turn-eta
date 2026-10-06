@@ -3,6 +3,11 @@
  * The UI itself lives verbatim in ./chat/TurnProgress.tsx + .module.css.
  */
 import { TurnProgress } from './chat/TurnProgress.tsx'
+import { TURN_ETA_DEFAULT_SKIN, TURN_ETA_SKIN_ATTRIBUTE, TURN_ETA_SKINS, isTurnEtaSkin, resolveTurnEtaSkin } from './chat/skins.ts'
+import type { TurnEtaSkin } from './chat/skins.ts'
+
+export { TURN_ETA_DEFAULT_SKIN, TURN_ETA_SKIN_ATTRIBUTE, TURN_ETA_SKINS, isTurnEtaSkin, resolveTurnEtaSkin }
+export type { TurnEtaSkin }
 
 /** Locale namespace for this plugin's composer-dock copy. */
 export const NS = 'dsh-session-turn-eta'

@@ -11,7 +11,15 @@
     "LICENSE"
   ],
   "license": "MIT",
-  "keywords": ["deepseek", "harness", "dsh", "dsh-plugin", "progress", "eta", "ui"],
+  "keywords": [
+    "deepseek",
+    "harness",
+    "dsh",
+    "dsh-plugin",
+    "progress",
+    "eta",
+    "ui"
+  ],
   "scripts": {
     "build": "tsdown",
     "build:client": "tsdown",
@@ -46,7 +54,6 @@
     },
     "client": {
       "inject": [
-        "@deepseek-ai/dsh-client-runtime",
         "@deepseek-ai/dsh-client-ui-conversation",
         "@deepseek-ai/dsh-client-locale"
       ],

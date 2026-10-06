@@ -49,11 +49,13 @@ const HISTORY_PRIOR_STEPS = 1
 
 /**
  * Percentile of the step-duration history used as the central per-step rate.
- * The distribution is right-skewed, so a quantile below the extreme resists one
- * very long step (an idle gap) while still tracking a typical step; 0.6 measured
- * best across the sweep of the archive.
+ * The duration distribution is strongly right-skewed, so the central rate has to
+ * sit high in the distribution to track the steps that actually dominate a turn.
+ * Measured on a rebuilt 131-session archive (42,853 train / 70,586 held-out
+ * live predictions), raising this from 0.6 to 0.9 shrank the remaining-time
+ * error on both halves and removed most of the systematic under-prediction.
  */
-const RATE_PERCENTILE = 0.6
+const RATE_PERCENTILE = 0.9
 
 /**
  * Fraction of the published total the turn must reach before the estimate may be
@@ -62,13 +64,16 @@ const RATE_PERCENTILE = 0.6
  * Holding the total until the turn has *fully* outrun it (`1`) pins the bar to
  * the first estimate of the turn: on a turn that keeps working, the real total
  * is several times the early anchor, so the bar undershoots badly and the
- * remaining time stays wrong for the whole turn. Re-anchoring from 0.6 onward
- * corrects that while still ignoring early noise. Measured on 702 archived
- * sessions split into train/test halves, this lowered MAPE on both halves
- * (47.3/53.8 -> 44.6/53.3) together with a large drop in the share of turns
- * whose estimate was overtaken (72.6/63.1 -> 59.9/50.9).
+ * remaining time stays wrong for the whole turn. Releasing at the halfway point
+ * measured best on both halves of the rebuilt archive: median remaining-time
+ * bias -0.29 -> +0.02 on the train half and -0.46 -> -0.29 on the held-out
+ * half, with median APE improving on both (0.775 -> 0.769 and 0.771 -> 0.754)
+ * and the overrun share dropping below half on the train half (0.60 -> 0.49).
  */
-const REANCHOR_AT = 0.6
+const REANCHOR_AT = 0.5
+
+/** Cap, as a multiple of the median, applied before reading the high quantile. */
+const OUTLIER_CAP = 8
 
 /** Safe bound on the blended per-step estimate relative to the historical median. */
 const RATE_FLOOR = 0.25
@@ -101,6 +106,23 @@ function quantile(sorted: readonly number[], fraction: number): number {
   if (lower === upper) return sorted[lower] as number
   const weight = position - lower
   return (sorted[lower] as number) * (1 - weight) + (sorted[upper] as number) * weight
+}
+
+/**
+ * Robust high quantile for a right-skewed sample: clamp the sample to its own
+ * median times a generous multiple first, so one 9-hour idle step cannot single
+ * handedly drag the central rate up, then take the quantile of the clamped list.
+ * @param sorted - ascending step durations.
+ * @param fraction - the quantile to read off the clamped list.
+ * @returns the robust quantile (0 for an empty list).
+ */
+function robustQuantile(sorted: readonly number[], fraction: number): number {
+  if (sorted.length === 0) return 0
+  const centre = median(sorted) as number
+  if (!(centre > 0)) return quantile(sorted, fraction)
+  const cap = centre * OUTLIER_CAP
+  const clamped = sorted.map((value) => Math.min(value, cap))
+  return quantile(clamped, fraction)
 }
 
 /** Ascending copy of a numeric list. */
@@ -147,7 +169,7 @@ export function etaCore(input: EtaPredictionInput): EtaCore {
   const completedSteps = input.stepDurations.length
   const elapsedMs = Math.max(0, input.asOf - input.startTime)
   const samples = ascending(input.stepSamples)
-  const historyRate = samples.length === 0 ? undefined : quantile(samples, RATE_PERCENTILE)
+  const historyRate = samples.length === 0 ? undefined : robustQuantile(samples, RATE_PERCENTILE)
   const base: EtaCore = { elapsedMs, completedSteps, method: 'insufficient-data' }
   if (historyRate === undefined || historyRate <= 0) return base
   const expectedSteps = expectedTotalSteps(input.completedTurnSteps, completedSteps)

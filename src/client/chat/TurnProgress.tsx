@@ -5,11 +5,12 @@
  * percentage from the projected total; a terminal turn renders its outcome.
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import type { UseProjection } from '@deepseek-ai/dsh-api-session-controller/client'
 // Type-only: merges the `turnEta` projection key into SessionProjectionMap.
 import type { TurnEtaProjection } from '@deepseek-ai/dsh-session-turn-eta/client'
 import type { ChatViewSlotProps } from '../contract/slots.ts'
+import { resolveTurnEtaSkin, type TurnEtaSkin } from './skins.ts'
 import css from './TurnProgress.module.css'
 
 /** Local tick while a turn is open; the wire only advances on session events. */
@@ -25,6 +26,12 @@ export interface TurnProgressProps {
   useProjection: UseProjection
   /** The owning dock's locale seat. */
   t: ChatViewSlotProps['t']
+  /**
+   * Optional skin override. When omitted, the component reads
+   * `data-turn-eta-skin` off `<body>`/`<html>` and otherwise uses `auto`
+   * (harness theme tokens).
+   */
+  skin?: TurnEtaSkin | string | null
 }
 
 /**
@@ -90,8 +97,9 @@ function remainingLabel(t: ChatViewSlotProps['t'], remainingMs: number): string 
  * @param props - the projection read seat and the dock locale seat.
  * @returns the bar, percentage label, and live remaining estimate.
  */
-export function TurnProgress({ useProjection, t }: TurnProgressProps) {
+export function TurnProgress({ useProjection, t, skin: skinProp }: TurnProgressProps) {
   const eta = useProjection('turnEta')
+  const skin = resolveTurnEtaSkin(skinProp)
   const status = eta === undefined ? undefined : turnProgressStatus(eta)
   const [now, setNow] = useState(() => Date.now())
 
@@ -125,6 +133,7 @@ export function TurnProgress({ useProjection, t }: TurnProgressProps) {
     <div
       className={css.root}
       data-turn-progress
+      data-skin={skin}
       data-status={status}
       data-indeterminate={percent === undefined ? 'true' : undefined}
       data-exhausted={exhausted ? 'true' : undefined}
@@ -132,6 +141,7 @@ export function TurnProgress({ useProjection, t }: TurnProgressProps) {
     >
       <div
         className={css.track}
+        style={percent === undefined ? undefined : { '--dsh-eta-percent': `${percent}%` } as CSSProperties}
         role="progressbar"
         aria-label={label}
         aria-valuemin={0}
@@ -139,7 +149,11 @@ export function TurnProgress({ useProjection, t }: TurnProgressProps) {
         aria-valuenow={percent}
         aria-valuetext={details}
       >
-        <div className={css.fill} style={percent === undefined ? undefined : { width: `${percent}%` }} />
+        <div className={css.rail}>
+          <div className={css.fill} style={percent === undefined ? undefined : { width: `${percent}%` }} />
+        </div>
+        {status === 'running' && percent !== undefined && <span className={css.tip} aria-hidden="true" />}
+        {status === 'completed' && <span className={css.celebration} aria-hidden="true" />}
       </div>
       <span className={css.label}>{label}</span>
       {remaining !== undefined && <span className={css.remaining}>{remaining}</span>}

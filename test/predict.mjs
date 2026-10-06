@@ -131,6 +131,19 @@ check('re-anchors upward before the turn fully outruns the estimate', () => {
   assert.ok(elapsed > firstTotal * 0.6, 'test premise: the turn should have passed the re-anchor point')
 })
 
+check('a right-skewed history is tracked by the robust high quantile', () => {
+  // Sorted samples [1000,1000,1000,5000]: a 60th-percentile rate would read
+  // 1000, while the 90th-percentile rate (after winsorising) reads ~3800, so the
+  // estimate has to sit well above the flat-rate one instead of ignoring the
+  // step that actually dominates this session.
+  const m = new TurnEtaModel(); const s = session()
+  const end = completedTurn(m, s, 1, 0, [1000, 1000, 1000, 5000])
+  const r = m.apply(s, ev('turn/start', end, { turn: 2 })).prediction
+  assert.equal(r.method, 'step-mean')
+  assert.equal(r.expectedSteps, 4)
+  assert.ok(r.predictedTotalMs > 8000, 'expected a high-quantile total, got ' + r.predictedTotalMs)
+})
+
 check('the total always stays ahead of the elapsed time, even across a long gap', () => {
   // The guarantee that keeps the bar off 100% is *runway*, not monotonicity: the
   // published total may fall back (the live estimate can drop), but it must never

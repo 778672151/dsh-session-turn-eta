@@ -1,5 +1,7 @@
 /* Live turn progress bar under the composer, in the same dock row as the
-   session-stats pills. Fallbacks keep the bar visible under any theme. */
+   session-stats pills. Colours come from the harness theme tokens by default and
+   from a named skin preset when `data-skin` selects one, so the bar stays
+   correct in both light and dark mode. */
 
 .root {
   display: flex;
@@ -16,21 +18,110 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Skin tokens. `auto` rides the harness theme tokens; the named presets only
+   override the four things a skin owns (fill, glow, track, celebration). */
+.root {
+  --dsh-eta-fill: linear-gradient(90deg, var(--dsw-alias-brand-primary, #4c8dff), var(--dsw-alias-brand-primary, #4c8dff));
+  --dsh-eta-glow: var(--dsw-alias-brand-primary, #4c8dff);
+  --dsh-eta-track: var(--dsw-alias-fill-tertiary, rgba(127, 127, 127, 0.25));
+  --dsh-eta-celebrate: #ffd166;
+}
+
+.root[data-skin='bilibili'] {
+  --dsh-eta-fill: linear-gradient(90deg, #fb7299, #ff9db8 70%, #ffd9e3);
+  --dsh-eta-glow: #fb7299;
+  --dsh-eta-track: color-mix(in srgb, #fb7299 18%, transparent);
+  --dsh-eta-celebrate: #fb7299;
+}
+
+.root[data-skin='mint'] {
+  --dsh-eta-fill: linear-gradient(90deg, #12b3a8, #4ee0c4 70%, #c8fff0);
+  --dsh-eta-glow: #12b3a8;
+  --dsh-eta-track: color-mix(in srgb, #12b3a8 18%, transparent);
+  --dsh-eta-celebrate: #4ee0c4;
+}
+
+.root[data-skin='sunset'] {
+  --dsh-eta-fill: linear-gradient(90deg, #f2762e, #ffb25e 70%, #ffe3ba);
+  --dsh-eta-glow: #f2762e;
+  --dsh-eta-track: color-mix(in srgb, #f2762e 18%, transparent);
+  --dsh-eta-celebrate: #ffb25e;
+}
+
+.root[data-skin='ocean'] {
+  --dsh-eta-fill: linear-gradient(90deg, #2b6cf6, #57a4ff 70%, #cfe6ff);
+  --dsh-eta-glow: #2b6cf6;
+  --dsh-eta-track: color-mix(in srgb, #2b6cf6 18%, transparent);
+  --dsh-eta-celebrate: #57a4ff;
+}
+
+/* The shimmery highlight that slides across the filled area, Bilibili-style. */
+.root {
+  --dsh-eta-shine: rgba(255, 255, 255, 0.38);
+}
+
 .track {
   position: relative;
   flex: 1;
   height: 4px;
   border-radius: 999px;
+  background: var(--dsh-eta-track);
+}
+
+.rail {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
   overflow: hidden;
-  background: var(--dsw-alias-fill-tertiary, rgba(127, 127, 127, 0.25));
 }
 
 .fill {
+  position: relative;
   height: 100%;
   width: 0;
   border-radius: 999px;
-  background: var(--dsw-alias-brand-primary, #4c8dff);
+  background: var(--dsh-eta-fill);
   transition: width 0.2s ease;
+}
+
+/* A soft shimmer sweeping the fill; purely decorative. */
+.fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 20%, var(--dsh-eta-shine) 50%, transparent 80%);
+  transform: translateX(-100%);
+  animation: eta-shine 2.4s ease-in-out infinite;
+}
+
+/* The leading dot Bilibili draws at the tip of the filled track. */
+.tip {
+  position: absolute;
+  top: 50%;
+  left: var(--dsh-eta-percent, 0%);
+  width: 7px;
+  height: 7px;
+  margin-left: -3.5px;
+  border-radius: 50%;
+  background: var(--dsh-eta-glow);
+  box-shadow: 0 0 0 2px var(--dsw-alias-bg-base, #fff), 0 0 6px var(--dsh-eta-glow);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+/* A one-shot burst when the turn really finishes. */
+.celebration {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  width: 10px;
+  height: 10px;
+  margin-right: -5px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--dsh-eta-celebrate) 0%, transparent 70%);
+  transform: translateY(-50%) scale(0.4);
+  animation: eta-celebrate 700ms ease-out 1 forwards;
+  pointer-events: none;
 }
 
 .root[data-status='completed'] .fill {
@@ -39,6 +130,11 @@
 
 .root[data-status='failed'] .fill {
   background: var(--dsw-alias-status-danger, #d9534f);
+}
+
+.root[data-status='completed'] .tip,
+.root[data-status='failed'] .tip {
+  display: none;
 }
 
 .root[data-exhausted='true'] .fill {
@@ -71,6 +167,33 @@
   }
 }
 
+@keyframes eta-shine {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  60%,
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes eta-celebrate {
+  0% {
+    opacity: 0;
+    transform: translateY(-50%) scale(0.4);
+  }
+
+  40% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(-50%) scale(2.6);
+  }
+}
+
 .label,
 .remaining {
   white-space: nowrap;
@@ -82,4 +205,19 @@
 
 .remaining {
   color: var(--dsw-alias-label-secondary, var(--dsw-alias-label-tertiary));
+}
+
+/* Respect the user's motion preference: keep the information, drop the motion. */
+@media (prefers-reduced-motion: reduce) {
+  .fill,
+  .fill::after,
+  .tip,
+  .celebration {
+    transition: none;
+    animation: none;
+  }
+
+  .celebration {
+    opacity: 0;
+  }
 }
