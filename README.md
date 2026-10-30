@@ -26,16 +26,23 @@ appears under the input box while the turn runs.
 
 | | |
 |---|---|
-| DeepSeek Harness | verified on `0.1.6-alpha.1` (the Windows desktop build in use; checkout `0d1f5000`) and contract-checked against `0.1.7-alpha.2` |
-| `@deepseek-ai/cordis` | `>=4.0.0-rc <5` |
-| `@deepseek-ai/dsh-session` | `>=0.0.1-rc <2` |
-| `@deepseek-ai/dsh-session-projection` | `>=0.0.1-rc <2` |
-| Node | 24.x for building; the shipped bundle runs on the DSH host |
+| DeepSeek-Harness desktop | `0.2.1-rc.5` (type-checked against its published packages) |
+| `@deepseek-ai/cordis` | `>=4.0.5 <5` |
+| `@deepseek-ai/dsh-session` | `^0.2.1-rc.1` |
+| `@deepseek-ai/dsh-session-projection` | `^0.2.1-rc.1` |
+| `@deepseek-ai/dsh-client-ui-conversation` / `dsh-client-locale` | `^0.2.1-rc.1` (client half, optional peers) |
+| Node | `>=22` for building; the shipped bundle runs on the DSH host |
 
 ## How it works
 
-The host half registers a `turnEta` session projection: it folds the durable
-`turn/start`, `step/start`, `step/end` and `turn/end` events into a prediction.
+The host half registers **one** `turnEta` session projection and nothing else:
+it folds the durable `turn/start`, `step/start`, `step/end` and `turn/end`
+events into a prediction. The projection registry already drives every
+registered unit once per committed event, so the plugin does not replay
+`session/event` a second time; it only mirrors the registry's change feed
+(`onChanged`, which fires when the published view changed by `Object.is`) onto
+two typed Cordis events: `turn-eta/update` while a turn is open and
+`turn-eta/complete` once per turn.
 
 - The per-step rate blends the live turn's own observed rate with the session's
   **90th-percentile** historical step duration (read after winsorising the sample
@@ -83,6 +90,28 @@ The client entry exports `TURN_ETA_SKINS`, `TURN_ETA_DEFAULT_SKIN`,
 values fall back to `auto`. All motion (shimmer, pulse, celebration) is disabled
 under `prefers-reduced-motion: reduce`.
 
+## Embedding the estimator
+
+The fold is plain data in, plain data out: the same code the bar renders from can
+be driven without Cordis, a session, or the plugin instance.
+
+```ts
+import { createTurnEtaFold, etaCore, ETA_TUNING } from '@dsh-external/dsh-session-turn-eta'
+
+// full fold: the projection the client renders
+const fold = createTurnEtaFold()
+for (const event of durableLog) fold.apply(event)
+const { remainingMs, predictedTotalMs, method } = fold.view()
+
+// or just the math, from whatever facts you already have
+const core = etaCore({ startTime, stepDurations, completedTurnSteps, stepSamples, asOf })
+```
+
+`createTurnEtaFold(seed)` accepts a captured `state()` so a fold can continue
+from a projection checkpoint instead of replaying the whole log. `ETA_TUNING`
+exposes every constant (`RATE_PERCENTILE`, `REANCHOR_AT`, `OUTLIER_CAP`, …) so a
+consumer can read the calibration instead of copying numbers.
+
 ## Build
 
 The published bundle is built by `tsdown` (no monorepo checkout required):
@@ -93,8 +122,15 @@ npm run build      # -> lib/index.js (host) + lib/client.js (client)
 npm test           # host estimator invariants + client render states
 ```
 
-`scripts/build.sh` is an optional development helper that links a local DSH
-checkout and type-checks the host half with that checkout's `tsc`.
+`npm run typecheck` checks both halves against the *published* `0.2.1-rc.x`
+contract: the host half (`tsconfig.json`) against `dsh-session` /
+`dsh-session-projection`, and the client half (`tsconfig.client.json`) against
+`dsh-client-ui-slots` / `dsh-api-session-controller` / `@types/react`.
+
+`scripts/build.sh` is an optional development helper that links a contract tree
+(`DSH_CONTRACT_DIR`, defaulting to a local copy of the published packages) and
+type-checks both halves, so the build and the desktop app agree on the same
+contract instead of on whatever a monorepo checkout happens to contain.
 
 ## License
 

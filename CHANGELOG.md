@@ -1,5 +1,76 @@
 # Changelog
 
+## 0.4.0
+
+Retargeted at the **0.2.1-rc.5** desktop build and rebuilt around a single fold.
+Same bar, same estimator numbers — less duplicated work, and the plugin now
+compiles against the contract the app actually loads.
+
+### One fold, not two
+
+- **Removed `TurnEtaModel` (`src/eta.ts`).** The host half used to register the
+  `turnEta` projection *and* replay every `session/event` through its own model,
+  folding the same events twice: the registry already drives each registered
+  unit once per committed event. The plugin now mirrors the registry's change
+  feed instead — `turn-eta/update` is emitted from `onChanged`, which only fires
+  when the published view changed by `Object.is`, so one emission per event that
+  actually moved the bar and one `turn-eta/complete` per closed turn.
+- The estimator itself is now public surface rather than model internals:
+  `etaCore`, `ETA_TUNING`, `median`, `quantile`, `robustQuantile`,
+  `expectedTotalSteps` and `turnEtaProjectionDefinition` are exported from
+  `lib/index.js`, so the same function the UI is driven by can be reused
+  directly (no plugin instance, no session) when embedding the estimator.
+- `ProjectionDefinition.init(header, inheritedEventCount)` now takes the two
+  arguments the 0.2.1 contract declares.
+- The empty fold state is minted per `init()` (`emptyState()`) instead of a
+  module-level `EMPTY_STATE` singleton, so two folds can never share one
+  `stepSamples` array by accident.
+
+### The estimator is now embeddable
+
+- **`createTurnEtaFold()`** (`src/fold.ts`) drives the very same fold without a
+  Cordis context, a registry, or a `Session`: `apply(event)` / `view()` /
+  `state()`. A captured `state()` can reseed a new fold, so a consumer that
+  already holds a projection checkpoint never replays the log.
+- `emptyTurnEtaState()` is the single definition of the empty fold state, used by
+  both `init()` and the standalone driver, so "empty" cannot drift between them.
+- `test/fold.mjs` pins the driver to the projection unit it wraps: identical views
+  event for event, the next turn anchors off a folded turn, a JSON-round-tripped
+  state resumes mid-session, and two folds never share a sample array.
+
+### Compatibility
+
+- `dsh.manifestVersion: 1`, `engines.node >= 22`, and peer ranges moved onto the
+  0.2.1 line: `@deepseek-ai/cordis >=4.0.5 <5`, `dsh-session ^0.2.1-rc.1`,
+  `dsh-session-projection ^0.2.1-rc.1`. The client half declares
+  `dsh-client-ui-conversation` / `dsh-client-locale` as **optional** peers.
+- Both halves are type-checked against the *published* `0.2.1-rc.x` packages, not
+  against a monorepo checkout: `tsconfig.json` covers the host half,
+  `tsconfig.client.json` covers the client half (`jsx: react-jsx`, DOM libs,
+  `src/client/css.d.ts` for the CSS-Modules shape). `scripts/build.sh` links a
+  contract tree (`DSH_CONTRACT_DIR`) and runs both checks, so a checkout that
+  drifted cannot silently redefine the contract.
+- The client half no longer imports its own package subpath
+  (`@deepseek-ai/dsh-session-turn-eta/client`) for the projection type; it reads
+  `src/types.ts` directly, and imports `@deepseek-ai/dsh-client-ui-slots`
+  type-only so the `LocaleNamespaceMap` augmentation is a legal module
+  augmentation instead of an unresolved module name.
+
+### Tests
+
+- `test/predict.mjs` now drives the **real fold**
+  (`turnEtaProjectionDefinition.apply` + `wire.view`) instead of a parallel
+  model, so the invariants cover the code path the desktop runs. The ten
+  original assertions are unchanged; three were added: an uninterested event
+  must return the **same state reference** (that identity is what lets the
+  registry skip the view and the change feed), the closed-turn view reports the
+  recorded duration and reason once, and an empty fold publishes a zeroed,
+  non-open view.
+- `test/smoke.mjs` asserts what the host half now exposes and, with a stub
+  registry, that `apply` registers one unit, subscribes once, ignores changes
+  for other keys, and emits `turn-eta/update` / `turn-eta/complete` with the
+  expected payloads (and nothing for the pre-first-turn empty view).
+
 ## 0.3.0
 
 A better-calibrated estimate, a real client-contract fix, and an opt-in skin

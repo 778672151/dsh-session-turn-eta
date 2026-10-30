@@ -1,34 +1,35 @@
 #!/bin/bash
-# Local/injector build for @dsh-external/dsh-session-turn-eta.
-# Links the host packages this plugin type-checks against, then type-checks with
-# the checkout tsc. Emission is done by tsdown (npm run build / prepare), which
-# is self-contained and needs no monorepo checkout.
+# Local build for @dsh-external/dsh-session-turn-eta.
+#
+# The plugin type-checks against the PUBLISHED DSH packages of the version line
+# it supports (0.2.1-rc.x), not against a monorepo checkout: that keeps the
+# contract it compiles against identical to the contract the desktop app
+# actually loads. Point DSH_CONTRACT_DIR at a node_modules tree that contains
+# @deepseek-ai/* 0.2.1-rc.x plus zod; when unset the script looks for one in the
+# usual places and finally falls back to a checkout's workspace packages.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-CHECKOUT="${DSH_CHECKOUT:-}"
-if [ -z "$CHECKOUT" ]; then
-  for candidate in "/home/zuoye/开发/deepseek-harness" "$HOME/dsh-harness" "$HOME/dsh" "$HOME/.dsh/dsh-harness"; do
-    if [ -d "$candidate/packages" ]; then CHECKOUT="$candidate"; break; fi
+# --- 1. resolve the contract tree -------------------------------------------
+CONTRACT="${DSH_CONTRACT_DIR:-}"
+if [ -z "$CONTRACT" ]; then
+  for candidate in "$HOME/.dsh/contracts/0.2.1-rc.5" "/tmp/eta-types/node_modules"; do
+    if [ -d "$candidate/@deepseek-ai/dsh-session-projection" ]; then CONTRACT="$candidate"; break; fi
   done
 fi
-if [ -z "$CHECKOUT" ] || [ ! -d "$CHECKOUT/packages" ]; then
-  echo "build: cannot locate the dsh checkout (set DSH_CHECKOUT)" >&2
+if [ -z "$CONTRACT" ]; then
+  echo "build: no contract tree found (set DSH_CONTRACT_DIR to a node_modules with @deepseek-ai/* 0.2.1-rc.x)" >&2
   exit 1
 fi
 
-TSC="$CHECKOUT/node_modules/.bin/tsc"
-if [ ! -x "$TSC" ] && [ ! -f "$TSC.cmd" ]; then
-  echo "build: tsc not found at $TSC" >&2
-  exit 1
-fi
-
-link_pkg() {
-  local target="$CHECKOUT/$2"
+# --- 2. link it in ----------------------------------------------------------
+link() {
+  local link_path="$ROOT/node_modules/$1"
+  local target="$2"
   if [ ! -e "$target" ]; then
-    echo "build: dependency target missing: $target" >&2
+    echo "build: missing $target (needed by $1)" >&2
     exit 1
   fi
   node -e "
@@ -38,39 +39,50 @@ link_pkg() {
     const target = path.resolve(process.argv[2]);
     fs.rmSync(link, { recursive: true, force: true });
     fs.mkdirSync(path.dirname(link), { recursive: true });
-    fs.symlinkSync(target, link, process.platform === 'win32' ? 'junction' : 'dir');
-  " "node_modules/$1" "$target"
+    fs.symlinkSync(target, link, 'dir');
+  " "$link_path" "$target"
 }
 
-echo "=== Linking build dependencies (checkout: $CHECKOUT) ==="
-mkdir -p node_modules/@deepseek-ai
-node -e "const fs=require('fs');fs.rmSync('node_modules/@standard-schema',{recursive:true,force:true})"
-link_pkg @deepseek-ai/cordis vendor/cordis
-link_pkg @deepseek-ai/cosmokit vendor/cosmokit
-link_pkg @deepseek-ai/schemastery vendor/schemastery
-link_pkg @deepseek-ai/dsh-session packages/core/session
-link_pkg @deepseek-ai/dsh-session-projection packages/session/session-projection
-link_pkg @types/node node_modules/@types/node
+echo "=== Linking the 0.2.1 contract ($CONTRACT) ==="
+for pkg in cordis cosmokit schemastery dsh-session dsh-session-projection \
+           dsh-client-ui-slots dsh-client-locale dsh-client-ui-conversation \
+           dsh-api-session-controller; do
+  link "@deepseek-ai/$pkg" "$CONTRACT/@deepseek-ai/$pkg"
+done
+link zod "$CONTRACT/zod"
+# dsh-client-runtime is optional for the plugin (it only type-checks the client
+# half against ui-slots); link it when the contract tree carries it.
+if [ -e "$CONTRACT/@deepseek-ai/dsh-client-runtime" ]; then
+  link "@deepseek-ai/dsh-client-runtime" "$CONTRACT/@deepseek-ai/dsh-client-runtime"
+fi
+# The client half needs React ambient types; they ship with the contract tree
+# when it came from a checkout, and are optional otherwise.
+if [ -n "${DSH_REACT_TYPES:-}" ] && [ -d "$DSH_REACT_TYPES/react" ]; then
+  mkdir -p "$ROOT/node_modules/@types"
+  link "@types/react" "$DSH_REACT_TYPES/react"
+fi
 
-ZOD_REL=$(cd "$CHECKOUT" && ls -d node_modules/.pnpm/zod@*/node_modules/zod 2>/dev/null | head -1)
-if [ -n "$ZOD_REL" ]; then
-  link_pkg zod "$ZOD_REL"
+# --- 3. toolchain shims -----------------------------------------------------
+BIN="$ROOT/node_modules/.bin"
+mkdir -p "$BIN"
+if [ -e "$CONTRACT/typescript" ]; then
+  link typescript "$CONTRACT/typescript"
+  ln -sf ../typescript/bin/tsc "$BIN/tsc"
+fi
+if [ -n "${DSH_CHECKOUT:-}" ] && [ -e "$DSH_CHECKOUT/node_modules/tsdown/dist/run.mjs" ]; then
+  ln -sf "$DSH_CHECKOUT/node_modules/tsdown/dist/run.mjs" "$BIN/tsdown"
+fi
+
+# --- 4. type-check ----------------------------------------------------------
+# Both halves are checked: the host half against the server-side contract, the
+# client half against the browser slots/locale contract.
+if [ -f "$BIN/tsc" ] || [ -x "$BIN/tsc" ]; then
+  TSC_VERSION=$("$BIN/tsc" --version)
+  echo "=== Type-checking host src ($TSC_VERSION) ==="
+  "$BIN/tsc" -p tsconfig.json
+  echo "=== Type-checking client src ==="
+  "$BIN/tsc" -p tsconfig.client.json
+  echo "=== Type-check complete ==="
 else
-  echo "build: zod not found under the checkout .pnpm store" >&2
-  exit 1
+  echo "build: tsc unavailable, skipping type-check" >&2
 fi
-
-STD_SCHEMA=$(find "$CHECKOUT/node_modules/.pnpm" -maxdepth 1 -type d -iname "@standard-schema+spec@*" 2>/dev/null | head -1)
-if [ -n "$STD_SCHEMA" ]; then
-  node -e "
-    const fs = require('fs');
-    const path = require('path');
-    fs.rmSync('node_modules/@standard-schema', { recursive: true, force: true });
-    fs.mkdirSync('node_modules/@standard-schema', { recursive: true });
-    fs.symlinkSync(path.resolve(process.argv[1]), path.resolve('node_modules/@standard-schema/spec'), process.platform === 'win32' ? 'junction' : 'dir');
-  " "$STD_SCHEMA/node_modules/@standard-schema/spec"
-fi
-
-echo "=== Type-checking src (tsc $("$TSC" --version)) ==="
-"$TSC" -p tsconfig.json
-echo "=== Type-check complete ==="

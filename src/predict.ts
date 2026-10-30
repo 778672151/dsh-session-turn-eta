@@ -1,7 +1,9 @@
 /**
- * Shared pure prediction math for the turn-eta fold: one home for the robust
- * per-step rate estimate and the turn-total extrapolation used by both the
- * event-emitting model (\`eta.ts\`) and the \`turnEta\` projection unit.
+ * Pure prediction math for the turn-eta fold: one home for the robust per-step
+ * rate estimate and the turn-total extrapolation that the `turnEta` projection
+ * unit publishes. Nothing here touches a session or a context, so the estimator
+ * can be driven directly (`etaCore` + `ETA_TUNING`) by an agent that only wants
+ * the numbers.
  *
  * Two properties matter for the rendered bar:
  * - **robustness** — a single very long step (an idle gap) must not blow up the
@@ -91,13 +93,13 @@ const OUTRUN_MINIMUM = 2
 const BOOTSTRAP_EXPECTED_STEPS = 10
 
 /** Median of a non-empty ascending numeric list, or undefined for an empty list. */
-function median(values: readonly number[]): number | undefined {
+export function median(values: readonly number[]): number | undefined {
   if (values.length === 0) return undefined
   return values[Math.floor(values.length / 2)] as number
 }
 
 /** Linear-interpolated quantile of an already ascending list. */
-function quantile(sorted: readonly number[], fraction: number): number {
+export function quantile(sorted: readonly number[], fraction: number): number {
   if (sorted.length === 0) return 0
   if (sorted.length === 1) return sorted[0] as number
   const position = fraction * (sorted.length - 1)
@@ -116,7 +118,7 @@ function quantile(sorted: readonly number[], fraction: number): number {
  * @param fraction - the quantile to read off the clamped list.
  * @returns the robust quantile (0 for an empty list).
  */
-function robustQuantile(sorted: readonly number[], fraction: number): number {
+export function robustQuantile(sorted: readonly number[], fraction: number): number {
   if (sorted.length === 0) return 0
   const centre = median(sorted) as number
   if (!(centre > 0)) return quantile(sorted, fraction)
@@ -126,12 +128,12 @@ function robustQuantile(sorted: readonly number[], fraction: number): number {
 }
 
 /** Ascending copy of a numeric list. */
-function ascending(values: readonly number[]): number[] {
+export function ascending(values: readonly number[]): number[] {
   return [...values].sort((left, right) => left - right)
 }
 
 /**
- * Expected total step count for a turn that has already completed \`completedSteps\`.
+ * Expected total step count for a turn that has already completed `completedSteps`.
  *
  * The anchor is the median of the completed turns that were at least this long:
  * a turn that has already outlived the typical turn is expected to outlive it
@@ -141,7 +143,7 @@ function ascending(values: readonly number[]): number[] {
  * @param completedSteps - steps completed in the open turn.
  * @returns the expected total step count, or undefined without history.
  */
-function expectedTotalSteps(
+export function expectedTotalSteps(
   completedTurnSteps: readonly number[],
   completedSteps: number,
 ): number | undefined {
@@ -161,7 +163,7 @@ function expectedTotalSteps(
  * duration. The published total is held while it still outruns the turn and
  * re-anchored to the live estimate once the turn runs past it, so the estimate
  * stays meaningful for arbitrarily long turns without reacting to every noisy
- * sample. \`insufficient-data\` omits every numeric field rather than guessing.
+ * sample. `insufficient-data` omits every numeric field rather than guessing.
  * @param input - open-turn anchors and observed step samples.
  * @returns the shared prediction core.
  */
@@ -213,3 +215,27 @@ export function etaCore(input: EtaPredictionInput): EtaCore {
     method: 'step-mean',
   }
 }
+
+/**
+ * The estimator's tuning constants, exported so a host — or a future agent
+ * runtime that wants the same calibration — can read them instead of copying
+ * numbers. The comments above each constant carry the measurement behind it.
+ */
+export const ETA_TUNING = {
+  /** Prior weight, in steps, of the historical rate against the live rate. */
+  HISTORY_PRIOR_STEPS,
+  /** Percentile of the step-duration history read as the central rate. */
+  RATE_PERCENTILE,
+  /** Fraction of the published total the turn must reach before re-anchoring. */
+  REANCHOR_AT,
+  /** Cap, as a multiple of the median, applied before reading a high quantile. */
+  OUTLIER_CAP,
+  /** Safe bound on the blended per-step estimate, relative to the history. */
+  RATE_FLOOR,
+  RATE_CEILING,
+  /** Runway kept when the turn already outran every finished turn. */
+  OUTRUN_GROWTH,
+  OUTRUN_MINIMUM,
+  /** Expected number of steps before the session has any finished turn. */
+  BOOTSTRAP_EXPECTED_STEPS,
+} as const

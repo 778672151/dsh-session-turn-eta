@@ -1,6 +1,6 @@
 {
   "name": "@dsh-external/dsh-session-turn-eta",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Predicts the remaining wall time of the live DeepSeek Harness turn from its step history and shows it as a progress bar with a live percentage under the composer.",
   "type": "module",
   "main": "./lib/index.js",
@@ -23,13 +23,25 @@
   "scripts": {
     "build": "tsdown",
     "build:client": "tsdown",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node test/smoke.mjs && node test/predict.mjs"
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json --noEmit",
+    "test": "node test/smoke.mjs && node test/predict.mjs && node test/fold.mjs",
+    "test:render": "node test/render-real.mjs",
+    "test:skin": "node test/skin.mjs"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": ">=4.0.0-rc <5",
-    "@deepseek-ai/dsh-session": ">=0.0.1-rc <2",
-    "@deepseek-ai/dsh-session-projection": ">=0.0.1-rc <2"
+    "@deepseek-ai/cordis": ">=4.0.5 <5",
+    "@deepseek-ai/dsh-session": "^0.2.1-rc.1",
+    "@deepseek-ai/dsh-session-projection": "^0.2.1-rc.1",
+    "@deepseek-ai/dsh-client-ui-conversation": "^0.2.1-rc.1",
+    "@deepseek-ai/dsh-client-locale": "^0.2.1-rc.1"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-client-ui-conversation": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-client-locale": {
+      "optional": true
+    }
   },
   "dependencies": {
     "zod": "^4.4.3"
@@ -48,7 +60,11 @@
     },
     "./package.json": "./package.json"
   },
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "dsh": {
+    "manifestVersion": 1,
     "bundle": {
       "patch": "./cordis.patch.yml"
     },

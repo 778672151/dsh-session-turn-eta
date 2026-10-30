@@ -53,7 +53,10 @@ const viewSchema: z.ZodType<TurnEtaProjection> = z.object({
   durationMs: z.number().nonnegative().optional(),
 }).strict()
 
-const EMPTY_STATE: TurnEtaState = { completedTurnSteps: [], stepSamples: [] }
+/** The empty-log state; a fresh instance per fold, since a unit owns its state. */
+export function emptyTurnEtaState(): TurnEtaState {
+  return { completedTurnSteps: [], stepSamples: [] }
+}
 
 /** The wire view for one fold state; cached per state reference. */
 const views = new WeakMap<TurnEtaState, TurnEtaProjection>()
@@ -125,7 +128,10 @@ export const turnEtaProjectionDefinition = {
   key: 'turnEta',
   stateVersion: 2,
   stateSchema,
-  init: () => EMPTY_STATE,
+  // The contract hands both the Session header and the fork-inherited prefix
+  // length; this fold keeps nothing header-derived, so they are accepted and
+  // ignored rather than dropped, which keeps the signature honest.
+  init: (_header, _inheritedEventCount) => emptyTurnEtaState(),
   apply: (state, event) => {
     switch (event.type) {
       case 'turn/start':

@@ -2,6 +2,10 @@
  * @dsh-external/dsh-session-turn-eta — client entry and dock wiring only.
  * The UI itself lives verbatim in ./chat/TurnProgress.tsx + .module.css.
  */
+// Type-only: makes the ui-slots module visible so the LocaleNamespaceMap
+// augmentation below is a legal module augmentation, and pins the slot/locale
+// contract this bundle is built against.
+import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import { TurnProgress } from './chat/TurnProgress.tsx'
 import { TURN_ETA_DEFAULT_SKIN, TURN_ETA_SKIN_ATTRIBUTE, TURN_ETA_SKINS, isTurnEtaSkin, resolveTurnEtaSkin } from './chat/skins.ts'
 import type { TurnEtaSkin } from './chat/skins.ts'
@@ -55,4 +59,11 @@ export function apply(ctx: {
     order: -1,
     locale: NS,
   }, TurnProgress))
+}
+
+declare module '@deepseek-ai/dsh-client-ui-slots' {
+  interface LocaleNamespaceMap {
+    /** This plugin's composer-dock copy; the keys of the dictionaries above. */
+    'dsh-session-turn-eta': keyof typeof zh
+  }
 }

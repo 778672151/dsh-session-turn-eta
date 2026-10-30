@@ -8,7 +8,7 @@
 import { useEffect, useState, type CSSProperties } from 'react'
 import type { UseProjection } from '@deepseek-ai/dsh-api-session-controller/client'
 // Type-only: merges the `turnEta` projection key into SessionProjectionMap.
-import type { TurnEtaProjection } from '@deepseek-ai/dsh-session-turn-eta/client'
+import type { TurnEtaProjection } from '../../types.ts'
 import type { ChatViewSlotProps } from '../contract/slots.ts'
 import { resolveTurnEtaSkin, type TurnEtaSkin } from './skins.ts'
 import css from './TurnProgress.module.css'

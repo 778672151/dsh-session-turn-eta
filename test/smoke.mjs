@@ -17,7 +17,54 @@ check('host exports name/inject/apply', () => {
   assert.equal(host.name, 'session-turn-eta')
   assert.deepEqual(host.inject, ['sessionProjections'])
   assert.equal(typeof host.apply, 'function')
-  assert.equal(typeof host.TurnEtaModel, 'function')
+  assert.equal(typeof host.turnEtaProjectionDefinition, 'object')
+  assert.equal(typeof host.etaCore, 'function')
+  assert.equal(typeof host.ETA_TUNING.BOOTSTRAP_EXPECTED_STEPS, 'number')
+})
+
+check('apply registers the projection and bridges its change feed', () => {
+  const registrations = []
+  const listeners = []
+  const emitted = []
+  const ctx = {
+    logger: { debug: () => {}, info: () => {} },
+    emit: (n, payload) => { emitted.push({ name: n, payload }) },
+    sessionProjections: {
+      register: (definition) => { registrations.push(definition); return () => {} },
+      onChanged: (listener) => { listeners.push(listener); return () => {} },
+    },
+  }
+  host.apply(ctx)
+  assert.equal(registrations.length, 1, 'expected one projection registration')
+  assert.equal(registrations[0].key, 'turnEta')
+  assert.equal(listeners.length, 1, 'expected one change-feed subscription')
+  const session = { id: 's' }
+  const openView = {
+    open: true, turn: 3, step: 2, elapsedMs: 9000, completedSteps: 2,
+    predictedTotalMs: 20000, remainingMs: 11000, method: 'step-mean',
+  }
+  // A view published for another key must not reach this plugin's events.
+  listeners[0](session, 'other', openView, 1)
+  assert.equal(emitted.length, 0)
+  listeners[0](session, 'turnEta', openView, 2)
+  assert.equal(emitted.length, 1)
+  assert.equal(emitted[0].name, 'turn-eta/update')
+  assert.equal(emitted[0].payload.sessionId, 's')
+  assert.equal(emitted[0].payload.remainingMs, 11000)
+  // The pre-first-turn empty view publishes no completion.
+  listeners[0](session, 'turnEta',
+    { open: false, turn: 0, completedSteps: 0, method: 'insufficient-data' }, 3)
+  assert.equal(emitted.length, 1, 'an empty view must not emit')
+  listeners[0](session, 'turnEta', {
+    open: false, turn: 3, completedSteps: 2, durationMs: 21000,
+    completed: true, reason: 'completed', method: 'insufficient-data',
+  }, 4)
+  assert.equal(emitted.length, 2)
+  assert.equal(emitted[1].name, 'turn-eta/complete')
+  assert.deepEqual(emitted[1].payload, {
+    sessionId: 's', turn: 3, durationMs: 21000, stepCount: 2,
+    completed: true, reason: 'completed',
+  })
 })
 
 const code = readFileSync(join(root, 'lib/client.js'), 'utf8')
