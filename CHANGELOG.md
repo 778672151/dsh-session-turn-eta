@@ -1,5 +1,51 @@
 # Changelog
 
+## 0.4.1
+
+Same numbers, ~25x cheaper per event. The projection runs on every committed
+session event and is now folded in amortised O(1) instead of O(history).
+
+### Hot path
+
+- **Incremental ascending history.** A finished step used to append to
+  `stepSamples` and every later prediction re-sorted the whole list, making a
+  session cost quadratic in its step count. `withSample(samples, value)` grows
+  the ascending copy by insertion and memoises it under the new list reference,
+  so the sort is paid once per step, at O(n) copy instead of O(n log n) sort.
+- **Rate profile cached per history.** `robustQuantile` winsorised the whole
+  sample list on every event (messages and tool calls included, which change no
+  sample). The 0.9 / 0.25 / 0.75 quantiles are now read once per sample list and
+  memoised: one clamp-scan per finished step instead of one per event.
+- **Winsorised quantile without the copy.** The clamped list is still ascending,
+  so its quantile is an index read with `min(value, cap)` applied at the two
+  interpolation endpoints — no per-call array allocation.
+- **Anchors by binary search.** `expectedTotalSteps` filtered and re-sorted the
+  completed-turn step counts on every event; the ascending copy is memoised and
+  the `>= completedSteps` median is now `lowerBound` plus an index read.
+- **The view reuses the anchor's core.** Advancing the open turn already ran
+  `etaCore` to refresh the monotonic total; the view of the same event reused
+  its result instead of running the estimator a second time with that total fed
+  back (which is idempotent by construction).
+
+Measured (`npm run bench`, fold only, no registry or UI, warmup run first):
+12,864 events over 8 turns of 50 steps went from ~9.5k to ~245k events/s, and
+the cost is now flat in the history size (80 turns / 32,160 events: ~150k
+events/s; before the change the same shape degraded to ~11k events/s at 3,000
+samples).
+
+### Exports and tests
+
+- `lib/index.js` now also exports `median`, `quantile`, `robustQuantile`,
+  `ascending`, `expectedTotalSteps`, `insertSorted` and `withSample`, so an
+  embedding host can reuse the exact primitives (and their memos) the
+  projection uses.
+- New `test/equiv.mjs` fuzzes every optimised primitive against the reference
+  formula it replaced (9,300 comparisons over randomised skewed samples), so a
+  future speed-up cannot silently drift from the maths. It runs as part of
+  `npm test`.
+- New `bench/bench.mjs` (throughput) and `bench/scale.mjs` (cost vs history
+  size), wired to `npm run bench`.
+
 ## 0.4.0
 
 Retargeted at the **0.2.1-rc.5** desktop build and rebuilt around a single fold.

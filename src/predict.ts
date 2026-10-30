@@ -122,14 +122,134 @@ export function robustQuantile(sorted: readonly number[], fraction: number): num
   if (sorted.length === 0) return 0
   const centre = median(sorted) as number
   if (!(centre > 0)) return quantile(sorted, fraction)
+  // The clamped list is ascending too, so its quantile is an index read with
+  // `min(value, cap)` applied per endpoint — no clamped copy per call.
   const cap = centre * OUTLIER_CAP
-  const clamped = sorted.map((value) => Math.min(value, cap))
-  return quantile(clamped, fraction)
+  if (sorted.length === 1) return Math.min(sorted[0] as number, cap)
+  const position = fraction * (sorted.length - 1)
+  const lower = Math.floor(position)
+  const upper = Math.ceil(position)
+  const low = Math.min(sorted[lower] as number, cap)
+  if (lower === upper) return low
+  const high = Math.min(sorted[upper] as number, cap)
+  return low * (1 - (position - lower)) + high * (position - lower)
+}
+
+/**
+ * Memo of the ascending copy of a sample list, keyed by the list reference.
+ *
+ * A fold appends (`[...samples, next]`) rather than mutating, so one list
+ * instance lives per state change; caching by reference turns the sort into one
+ * per appended sample instead of one per prediction (the same list is read by
+ * both the anchor advance and the view of the same event).
+ */
+const sortedByReference = new WeakMap<readonly number[], readonly number[]>()
+
+/** Ascending copy of a numeric list, memoised for as long as the list lives. */
+function sortedSamples(values: readonly number[]): readonly number[] {
+  const cached = sortedByReference.get(values)
+  if (cached !== undefined) return cached
+  const sorted = ascending(values)
+  sortedByReference.set(values, sorted)
+  return sorted
+}
+
+/** The three rates one step-duration history yields, read off it once. */
+interface RateProfile {
+  readonly historyRate: number
+  readonly lowRate: number
+  readonly highRate: number
+}
+
+/** Rate profile of one sample list; cached per list reference, like the sort. */
+const profiles = new WeakMap<readonly number[], RateProfile>()
+
+/**
+ * Read the central, low and high step rates off one history.
+ *
+ * A sample list only changes when a step ends, while the estimator runs on every
+ * event inside the step (messages, tool calls, results). Caching the profile by
+ * list reference pays the clamp-quantile scan once per finished step instead of
+ * once per event, which is what keeps the fold linear in the event count rather
+ * than quadratic in it.
+ */
+function rateProfile(samples: readonly number[]): RateProfile {
+  const cached = profiles.get(samples)
+  if (cached !== undefined) return cached
+  const sorted = sortedSamples(samples)
+  const profile: RateProfile = {
+    historyRate: robustQuantile(sorted, RATE_PERCENTILE),
+    lowRate: quantile(sorted, 0.25),
+    highRate: quantile(sorted, 0.75),
+  }
+  profiles.set(samples, profile)
+  return profile
+}
+
+/**
+ * Insert one value into an ascending list, keeping it ascending.
+ * @param sorted - ascending numeric list.
+ * @param value - the value to insert.
+ * @returns a new ascending list (the input is untouched).
+ */
+export function insertSorted(sorted: readonly number[], value: number): number[] {
+  const at = lowerBound(sorted, value)
+  const out = new Array<number>(sorted.length + 1)
+  for (let i = 0; i < at; i++) out[i] = sorted[i] as number
+  out[at] = value
+  for (let i = at; i < sorted.length; i++) out[i + 1] = sorted[i] as number
+  return out
+}
+
+/**
+ * Append one step duration to a sample list, warming the sorted memo for the
+ * result.
+ *
+ * The fold appends one sample per finished step; sorting the whole list again
+ * on every append would make a long session cost quadratic time per event, so
+ * the ascending copy is grown by insertion instead.
+ * @param samples - the previous sample list.
+ * @param value - the duration to append.
+ * @returns the new sample list.
+ */
+export function withSample(samples: readonly number[], value: number): readonly number[] {
+  const next = [...samples, value]
+  sortedByReference.set(next, insertSorted(sortedSamples(samples), value))
+  return next
 }
 
 /** Ascending copy of a numeric list. */
 export function ascending(values: readonly number[]): number[] {
   return [...values].sort((left, right) => left - right)
+}
+
+/** Ascending copy of the completed-turn step counts, cached per list reference. */
+const anchors = new WeakMap<readonly number[], readonly number[]>()
+
+/** Ascending step counts of the finished turns, memoised for as long as the list lives. */
+function sortedCompletedSteps(completedTurnSteps: readonly number[]): readonly number[] {
+  const cached = anchors.get(completedTurnSteps)
+  if (cached !== undefined) return cached
+  const sorted = ascending(completedTurnSteps)
+  anchors.set(completedTurnSteps, sorted)
+  return sorted
+}
+
+/**
+ * Index of the first entry of an ascending list that is at least `value`.
+ * @param sorted - ascending numeric list.
+ * @param value - the lower bound to find.
+ * @returns the index, or the list length when every entry is smaller.
+ */
+function lowerBound(sorted: readonly number[], value: number): number {
+  let low = 0
+  let high = sorted.length
+  while (low < high) {
+    const middle = (low + high) >>> 1
+    if ((sorted[middle] as number) < value) low = middle + 1
+    else high = middle
+  }
+  return low
 }
 
 /**
@@ -139,6 +259,10 @@ export function ascending(values: readonly number[]): number[] {
  * a turn that has already outlived the typical turn is expected to outlive it
  * further, but no faster than the observed distribution suggests. When no
  * completed turn was this long, grow the observed count by a fixed runway.
+ *
+ * Both the median of the whole history and the median of its `>= completedSteps`
+ * suffix are read off one ascending copy, so a live turn costs a binary search
+ * plus an index read per event instead of a filter and a sort.
  * @param completedTurnSteps - step counts of this session's completed turns.
  * @param completedSteps - steps completed in the open turn.
  * @returns the expected total step count, or undefined without history.
@@ -147,10 +271,15 @@ export function expectedTotalSteps(
   completedTurnSteps: readonly number[],
   completedSteps: number,
 ): number | undefined {
-  const base = median(ascending(completedTurnSteps)) ?? BOOTSTRAP_EXPECTED_STEPS
+  const sorted = sortedCompletedSteps(completedTurnSteps)
+  const base = median(sorted) ?? BOOTSTRAP_EXPECTED_STEPS
   if (completedSteps <= 0) return base
-  const longer = completedTurnSteps.filter((count) => count >= completedSteps)
-  if (longer.length > 0) return Math.max(base, median(ascending(longer)) as number)
+  // Median of an ascending list is an index read, so the suffix needs no copy.
+  const from = lowerBound(sorted, completedSteps)
+  if (from < sorted.length) {
+    const longer = sorted[from + Math.floor((sorted.length - from) / 2)] as number
+    return Math.max(base, longer)
+  }
   return Math.max(base, completedSteps + Math.max(OUTRUN_MINIMUM, Math.ceil(completedSteps * OUTRUN_GROWTH)))
 }
 
@@ -170,8 +299,7 @@ export function expectedTotalSteps(
 export function etaCore(input: EtaPredictionInput): EtaCore {
   const completedSteps = input.stepDurations.length
   const elapsedMs = Math.max(0, input.asOf - input.startTime)
-  const samples = ascending(input.stepSamples)
-  const historyRate = samples.length === 0 ? undefined : robustQuantile(samples, RATE_PERCENTILE)
+  const historyRate = input.stepSamples.length === 0 ? undefined : rateProfile(input.stepSamples).historyRate
   const base: EtaCore = { elapsedMs, completedSteps, method: 'insufficient-data' }
   if (historyRate === undefined || historyRate <= 0) return base
   const expectedSteps = expectedTotalSteps(input.completedTurnSteps, completedSteps)
@@ -199,8 +327,7 @@ export function etaCore(input: EtaPredictionInput): EtaCore {
     predictedTotalMs = Math.max(rawTotalMs, elapsedMs + Math.max(meanStepMs, 1))
   }
   const remainingMs = Math.max(0, predictedTotalMs - elapsedMs)
-  const lowRate = quantile(samples, 0.25)
-  const highRate = quantile(samples, 0.75)
+  const { lowRate, highRate } = rateProfile(input.stepSamples)
   const interval: TurnEtaInterval = {
     lowMs: Math.max(0, Math.min(lowRate * expectedSteps, predictedTotalMs) - elapsedMs),
     highMs: Math.max(0, highRate * expectedSteps - elapsedMs),

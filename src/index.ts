@@ -23,7 +23,17 @@ export type * from './types.ts'
 export { emptyTurnEtaState, turnEtaProjectionDefinition } from './projection.ts'
 export { createTurnEtaFold } from './fold.ts'
 export type { TurnEtaFold, TurnEtaFoldEvent } from './fold.ts'
-export { ETA_TUNING, etaCore } from './predict.ts'
+export {
+  ETA_TUNING,
+  ascending,
+  etaCore,
+  expectedTotalSteps,
+  insertSorted,
+  median,
+  quantile,
+  robustQuantile,
+  withSample,
+} from './predict.ts'
 export type { EtaCore, EtaPredictionInput } from './predict.ts'
 
 declare module '@deepseek-ai/cordis' {

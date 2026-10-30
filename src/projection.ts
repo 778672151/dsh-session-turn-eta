@@ -9,7 +9,8 @@
 
 import { z } from 'zod'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
-import { etaCore } from './predict.ts'
+import { etaCore, withSample } from './predict.ts'
+import type { EtaCore } from './predict.ts'
 import type { OpenTurnState, TurnEtaProjection, TurnEtaState } from './types.ts'
 
 const openTurnSchema = z.object({
@@ -62,6 +63,17 @@ export function emptyTurnEtaState(): TurnEtaState {
 const views = new WeakMap<TurnEtaState, TurnEtaProjection>()
 
 /**
+ * The prediction core already computed for one open-turn state, keyed by the
+ * open object reference.
+ *
+ * Advancing the open turn has to run the estimator to refresh the monotonic
+ * total anchor, and the view of the very same event would run it again with the
+ * refreshed anchor. That second run is pure idempotence (see `etaCore`: feeding
+ * back its own total can only reproduce it), so the first result is reused.
+ */
+const cores = new WeakMap<OpenTurnState, EtaCore>()
+
+/**
  * Advance the open turn to \`asOf\` with a patch, refreshing the monotonic total
  * anchor so the next view reads the same total the estimator just published.
  */
@@ -80,13 +92,20 @@ function advanceOpen(
     asOf,
     previousTotalMs: next.lastTotalMs,
   })
-  if (core.predictedTotalMs === undefined) return next
-  return { ...next, lastTotalMs: core.predictedTotalMs }
+  const anchored: OpenTurnState = core.predictedTotalMs === undefined
+    ? next
+    : { ...next, lastTotalMs: core.predictedTotalMs }
+  cores.set(anchored, core)
+  return anchored
 }
 
 function computeView(state: TurnEtaState): TurnEtaProjection {
   const open = state.open
   if (open !== undefined) {
+    const cached = cores.get(open)
+    if (cached !== undefined) {
+      return { turn: open.turn, step: open.lastStep, open: true, startTime: open.startTime, ...cached }
+    }
     const core = etaCore({
       startTime: open.startTime,
       stepDurations: open.stepDurations,
@@ -158,7 +177,7 @@ export const turnEtaProjectionDefinition = {
           : [...open.stepDurations, Math.max(0, event.time - open.openStepStart)]
         const stepSamples = open.openStepStart === undefined
           ? state.stepSamples
-          : [...state.stepSamples, Math.max(0, event.time - open.openStepStart)]
+          : withSample(state.stepSamples, Math.max(0, event.time - open.openStepStart))
         const next = { ...state, stepSamples }
         return { ...next, open: advanceOpen(next, open, event.time, { stepDurations, openStepStart: undefined, lastStep: event.data.step }) }
       }
